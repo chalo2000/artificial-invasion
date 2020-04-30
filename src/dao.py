@@ -71,6 +71,7 @@ def validate_character_request(uid, cid, delete):
   if delete:
     db.session.delete(character)
     db.session.commit()
+    return serialized_character, 202
   return serialized_character, 200
 
 #############

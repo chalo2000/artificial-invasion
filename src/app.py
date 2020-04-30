@@ -129,7 +129,7 @@ def delete_weapon(wid):
     weapon = dao.delete_weapon(wid)
     if weapon is None:
         return failure_response("This weapon does not exist!")
-    return success_response(weapon)
+    return success_response(weapon, 202)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
