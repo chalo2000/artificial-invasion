@@ -12,16 +12,33 @@ LOCAL_URL = "http://localhost:5000"
 SAMPLE_USER = {"username": "chalo2000"}
 SAMPLE_CHARACTER = {"name": "Chalos"}
 SAMPLE_WEAPON = {"name": "Rubber Duck", "atk": 1337}
+SAMPLE_LOG = {"challenger_hp": 20, "opponent_hp": 20, "action": "COVID Outbreak"}
 
 # API Documentation error messages
 USER_BAD_REQUEST = "Provide a proper request of the form {username: string}"
 USER_NOT_FOUND = "This user does not exist!"
+
 CHARACTER_BAD_REQUEST = "Provide a proper request of the form {name: string}"
 CHARACTER_FORBIDDEN = "This character does not belong to the provided user!"
 CHARACTER_USER_NOT_FOUND = "The provided user does not exist!"
 CHARACTER_NOT_FOUND = "This character does not exist!"
+
 WEAPON_BAD_REQUEST = 'Provide a proper request of the form {name: string, atk: number}'
 WEAPON_NOT_FOUND = "This weapon does not exist!"
+
+BATTLE_BAD_REQUEST = 'Provide a proper request of the form {challenger_id: number, opponent_id?: number}'
+BATTLE_CHALLENGER_FORBIDDEN = "The challenger is already in a battle!"
+BATTLE_OPPONENT_FORBIDDEN = "The opponent is already in a battle!"
+BATTLE_SAME_FORBIDDEN = "The challenger and opponent belong to the same user!"
+BATTLE_CHALLENGER_NOT_FOUND = "The challenger character does not exist!"
+BATTLE_OPPONENT_NOT_FOUND = "The opponent character does not exist!"
+BATTLE_NOT_FOUND = "This battle does not exist!"
+
+LOG_BAD_REQUEST = 'Provide a proper request of the form {challenger_hp: number, opponent_hp: number, \
+action: string}'
+LOG_FORBIDDEN = "This log does not belong to the provided battle!"
+LOG_BATTLE_NOT_FOUND = "The provided battle does not exist!"
+LOG_NOT_FOUND = "This log does not exist!"
 
 # Request endpoint generators
 def gen_users_path(user_id=None):
@@ -69,6 +86,7 @@ class TestRoutes(unittest.TestCase):
         assert body["success"]
         assert user["username"] == SAMPLE_USER["username"]
         assert user["characters"] == []
+        assert user["friends"] == []
 
     def test_create_user_bad_request(self):
         # Test incorrect field name

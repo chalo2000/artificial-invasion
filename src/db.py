@@ -2,11 +2,20 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+friends_table = db.Table("association", db.Model.metadata,
+  db.Column("friender_id", db.Integer, db.ForeignKey("user.id")),
+  db.Column("friendee_id", db.Integer, db.ForeignKey("user.id"))
+  )
+
 class User(db.Model):
   __tablename__ = "user"
   id = db.Column(db.Integer, primary_key=True)
   username = db.Column(db.String, nullable=False)
   characters = db.relationship('Character', cascade="delete")
+  friends = db.relationship('User', secondary=friends_table, 
+                            primaryjoin=id==friends_table.c.friender_id,
+                            secondaryjoin=id==friends_table.c.friendee_id,
+                            back_populates="friends")
 
   def __init__(self, **kwargs):
     self.username = kwargs.get("username", "")
@@ -16,7 +25,15 @@ class User(db.Model):
     return {
       "id": self.id,
       "username": self.username,
-      "characters": [character.serialize() for character in self.characters]
+      "characters": [character.serialize() for character in self.characters],
+      "friends": [friend.serialize_friendless() for friend in self.friends]
+    }
+  
+  def serialize_friendless(self):
+    return {
+      "id": self.id,
+      "username": self.username,
+      "characters": [character.serialize() for character in self.characters],
     }
 
 class Character(db.Model):
