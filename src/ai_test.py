@@ -13,6 +13,16 @@ SAMPLE_USER = {"username": "chalo2000"}
 SAMPLE_CHARACTER = {"name": "Chalos"}
 SAMPLE_WEAPON = {"name": "Rubber Duck", "atk": 1337}
 
+# API Documentation error messages
+USER_BAD_REQUEST = "Provide a proper request of the form {username: string}"
+USER_NOT_FOUND = "This user does not exist!"
+CHARACTER_BAD_REQUEST = "Provide a proper request of the form {name: string}"
+CHARACTER_FORBIDDEN = "This character does not belong to the provided user!"
+CHARACTER_USER_NOT_FOUND = "The provided user does not exist!"
+CHARACTER_NOT_FOUND = "This character does not exist!"
+WEAPON_BAD_REQUEST = 'Provide a proper request of the form {name: string, atk: number}'
+WEAPON_NOT_FOUND = "This weapon does not exist!"
+
 # Request endpoint generators
 def gen_users_path(user_id=None):
     base_path = f"{LOCAL_URL}/api/users"
@@ -43,8 +53,6 @@ def unwrap_response(response, body={}):
             method handler for this route!
             """)
 
-
-
 class TestRoutes(unittest.TestCase):
     def test_get_initial_users(self):
         res = requests.get(gen_users_path())
@@ -68,14 +76,14 @@ class TestRoutes(unittest.TestCase):
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == "Provide a proper request of the form {username: string}"
+        assert body["error"] == USER_BAD_REQUEST
 
         # Test incorrect field type
         res = requests.post(gen_users_path(), data=json.dumps({"username": 0}))
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == "Provide a proper request of the form {username: string}"
+        assert body["error"] == USER_BAD_REQUEST
 
     def test_get_user(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -95,7 +103,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This user does not exist!"
+        assert body["error"] == USER_NOT_FOUND
 
     def test_delete_user(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -114,7 +122,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This user does not exist!"
+        assert body["error"] == USER_NOT_FOUND
 
     def test_delete_invalid_user(self):
         res = requests.delete(gen_users_path(1000))
@@ -122,7 +130,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This user does not exist!"
+        assert body["error"] == USER_NOT_FOUND
     
     def test_create_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -152,21 +160,21 @@ class TestRoutes(unittest.TestCase):
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == "Provide a proper request of the form {name: string}"
+        assert body["error"] == CHARACTER_BAD_REQUEST
 
         # Test incorrect field type
         res = requests.post(gen_characters_path(user_id), data=json.dumps({"name": 0}))
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == "Provide a proper request of the form {name: string}"
+        assert body["error"] == CHARACTER_BAD_REQUEST
 
     def test_create_character_invalid_user(self):
         res = requests.post(gen_characters_path(1000), data=json.dumps(SAMPLE_CHARACTER))
         assert res.status_code == 404
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == "The provided user does not exist!"
+        assert body["error"] == CHARACTER_USER_NOT_FOUND
     
     def test_get_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -213,7 +221,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This character does not belong to the provided user!"
+        assert body["error"] == CHARACTER_FORBIDDEN
 
     def test_get_character_invalid_user(self):
         res = requests.get(gen_characters_path(1000, 0))
@@ -221,7 +229,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "The provided user does not exist!"
+        assert body["error"] == CHARACTER_USER_NOT_FOUND
 
     def test_get_invalid_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -234,7 +242,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This character does not exist!"
+        assert body["error"] == CHARACTER_NOT_FOUND
 
     def test_delete_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -258,7 +266,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This character does not exist!"
+        assert body["error"] == CHARACTER_NOT_FOUND
 
     def test_delete_forbidden_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -281,7 +289,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This character does not belong to the provided user!"
+        assert body["error"] == CHARACTER_FORBIDDEN
 
     def test_delete_character_invalid_user(self):
         res = requests.delete(gen_characters_path(1000, 0))
@@ -289,7 +297,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "The provided user does not exist!"
+        assert body["error"] == CHARACTER_USER_NOT_FOUND
 
     def test_delete_invalid_character(self):
         res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
@@ -302,7 +310,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This character does not exist!"
+        assert body["error"] == CHARACTER_NOT_FOUND
 
     def test_get_initial_weapons(self):
         res = requests.get(gen_weapons_path())
@@ -326,26 +334,26 @@ class TestRoutes(unittest.TestCase):
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == 'Provide a proper request of the form {name: string, atk: number}'
+        assert body["error"] == WEAPON_BAD_REQUEST
 
         res = requests.post(gen_weapons_path(), data=json.dumps({"name": "dong", "dong": 5}))
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == 'Provide a proper request of the form {name: string, atk: number}'
+        assert body["error"] == WEAPON_BAD_REQUEST
 
         # Test incorrect field types
         res = requests.post(gen_weapons_path(), data=json.dumps({"name": 0, "atk": 0}))
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == 'Provide a proper request of the form {name: string, atk: number}'
+        assert body["error"] == WEAPON_BAD_REQUEST
 
         res = requests.post(gen_weapons_path(), data=json.dumps({"name": "0", "atk": "0"}))
         assert res.status_code == 400
         body = unwrap_response(res)
         assert not body["success"]
-        assert body["error"] == 'Provide a proper request of the form {name: string, atk: number}'
+        assert body["error"] == WEAPON_BAD_REQUEST
 
     def test_get_weapon(self):
         res = requests.post(gen_weapons_path(), data=json.dumps(SAMPLE_WEAPON))
@@ -365,7 +373,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This weapon does not exist!"
+        assert body["error"] == WEAPON_NOT_FOUND
 
     def test_delete_weapon(self):
         res = requests.post(gen_weapons_path(), data=json.dumps(SAMPLE_WEAPON))
@@ -384,7 +392,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This weapon does not exist!"
+        assert body["error"] == WEAPON_NOT_FOUND
 
     def test_delete_invalid_weapon(self):
         res = requests.delete(gen_weapons_path(1000))
@@ -392,7 +400,7 @@ class TestRoutes(unittest.TestCase):
         body = unwrap_response(res)
 
         assert not body["success"]
-        assert body["error"] == "This weapon does not exist!"
+        assert body["error"] == WEAPON_NOT_FOUND
 
 def run_tests():
     sleep(1.5)
