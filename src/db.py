@@ -20,6 +20,7 @@ class User(db.Model):
   def __init__(self, **kwargs):
     self.username = kwargs.get("username", "")
     self.characters = []
+    self.friends = []
 
   def serialize(self):
     return {
@@ -50,7 +51,7 @@ class Character(db.Model):
     self.mhp = 10
     self.atk = 2
     self.weapon_id = None
-    self.user_id = kwargs.get("uid", "")
+    self.user_id = kwargs.get("uid", 0)
 
   def serialize(self):
     return {
@@ -77,4 +78,59 @@ class Weapon(db.Model):
       "id": self.id,
       "name": self.name,
       "atk": self.atk
+    }
+
+class Battle(db.Model):
+  __tablename__ = "battle"
+  id = db.Column(db.Integer, primary_key=True)
+  challenger_id = db.Column(db.Integer, db.ForeignKey("character.id"), nullable=False)
+  opponent_id = db.Column(db.Integer, db.ForeignKey("character.id"))
+  logs = db.relationship('Log', cascade="delete")
+  started = db.Column(db.Boolean, nullable=False)
+  accepted = db.Column(db.Boolean)
+
+  def __init__(self, **kwargs):
+    self.challenger_id = kwargs.get("challenger_id", 0)
+    self.opponent_id = kwargs.get("opponent_id", None)
+    self.logs = []
+    if self.opponent_id is None:
+      self.started = True
+      self.accepted = True
+    else:
+      self.started = False
+      self.accepted = None
+
+  def serialize(self):
+    return {
+      "id": self.id,
+      "challenger_id": self.challenger_id,
+      "opponent_id": self.opponent_id,
+      "logs": [log.serialize() for log in self.logs],
+      "started": self.started,
+      "accepted": self.accepted
+    }
+
+class Log(db.Model):
+  __tablename__ = "log"
+  id = db.Column(db.Integer, primary_key=True)
+  timestamp = db.Column(db.Integer, nullable=False)
+  challenger_hp = db.Column(db.Integer, nullable=False)
+  opponent_hp = db.Column(db.Integer, nullable=False)
+  action = db.Column(db.String, nullable=False)
+  battle_id = db.Column(db.Integer, db.ForeignKey("battle.id"), nullable=False)
+
+  def __init__(self, **kwargs):
+    self.timestamp = kwargs.get("timestamp", 0)
+    self.challenger_hp = kwargs.get("challenger_hp", 0)
+    self.opponent_hp = kwargs.get("opponent_hp", 0)
+    self.action = kwargs.get("action", "")
+    self.battle_id = kwargs.get("bid", 0)
+
+  def serialize(self):
+    return {
+      "id": self.id,
+      "timestamp": self.timestamp,
+      "challenger_hp": self.challenger_hp,
+      "opponent_hp": self.opponent_hp,
+      "action": self.action
     }

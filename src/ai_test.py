@@ -30,12 +30,12 @@ BATTLE_BAD_REQUEST = 'Provide a proper request of the form {challenger_id: numbe
 BATTLE_CHALLENGER_FORBIDDEN = "The challenger is already in a battle!"
 BATTLE_OPPONENT_FORBIDDEN = "The opponent is already in a battle!"
 BATTLE_SAME_FORBIDDEN = "The challenger and opponent belong to the same user!"
+BATTLE_PENDING_FORBIDDEN = "There is already a battle request pending!"
 BATTLE_CHALLENGER_NOT_FOUND = "The challenger character does not exist!"
 BATTLE_OPPONENT_NOT_FOUND = "The opponent character does not exist!"
 BATTLE_NOT_FOUND = "This battle does not exist!"
 
-LOG_BAD_REQUEST = 'Provide a proper request of the form {challenger_hp: number, opponent_hp: number, \
-action: string}'
+LOG_BAD_REQUEST = 'Provide a proper request of the form {timestamp: string, challenger_hp: number, opponent_hp: number, action: string}'
 LOG_FORBIDDEN = "This log does not belong to the provided battle!"
 LOG_BATTLE_NOT_FOUND = "The provided battle does not exist!"
 LOG_NOT_FOUND = "This log does not exist!"
@@ -52,6 +52,10 @@ def gen_characters_path(user_id, character_id=None):
 def gen_weapons_path(weapon_id=None):
     base_path = f"{LOCAL_URL}/api/weapons"
     return base_path + "/" if weapon_id is None else f"{base_path}/{str(weapon_id)}/"
+
+def gen_battles_path(battle_id=None):
+    base_path = f"{LOCAL_URL}/api/battles"
+    return base_path + "/" if battle_id is None else f"{base_path}/{str(battle_id)}/"
 
 # Response handler for unwrapping jsons, provides more useful error messages
 def unwrap_response(response, body={}):
