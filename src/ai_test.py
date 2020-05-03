@@ -4,6 +4,7 @@ import requests
 from app import app
 from threading import Thread
 from time import sleep
+from copy import copy
 
 # URL pointing to your local dev host
 LOCAL_URL = "http://localhost:5000"
@@ -12,7 +13,8 @@ LOCAL_URL = "http://localhost:5000"
 SAMPLE_USER = {"username": "chalo2000"}
 SAMPLE_CHARACTER = {"name": "Chalos"}
 SAMPLE_WEAPON = {"name": "Rubber Duck", "atk": 1337}
-SAMPLE_LOG = {"challenger_hp": 20, "opponent_hp": 20, "action": "COVID Outbreak"}
+SAMPLE_BATTLE = lambda chal_id, o_id=None: {"challenger_id": chal_id, "opponent_id": o_id}
+SAMPLE_LOG = {"timestamp": 1234, "challenger_hp": 20, "opponent_hp": 20, "action": "COVID Outbreak"}
 
 # API Documentation error messages
 USER_BAD_REQUEST = "Provide a proper request of the form {username: string}"
@@ -35,7 +37,8 @@ BATTLE_CHALLENGER_NOT_FOUND = "The challenger character does not exist!"
 BATTLE_OPPONENT_NOT_FOUND = "The opponent character does not exist!"
 BATTLE_NOT_FOUND = "This battle does not exist!"
 
-LOG_BAD_REQUEST = 'Provide a proper request of the form {timestamp: string, challenger_hp: number, opponent_hp: number, action: string}'
+LOG_BAD_REQUEST = 'Provide a proper request of the form {timestamp: number, challenger_hp: number, \
+opponent_hp: number, action: string}'
 LOG_FORBIDDEN = "This log does not belong to the provided battle!"
 LOG_BATTLE_NOT_FOUND = "The provided battle does not exist!"
 LOG_NOT_FOUND = "This log does not exist!"
@@ -57,6 +60,129 @@ def gen_battles_path(battle_id=None):
     base_path = f"{LOCAL_URL}/api/battles"
     return base_path + "/" if battle_id is None else f"{base_path}/{str(battle_id)}/"
 
+def gen_logs_path(battle_id, log_id=None):
+    base_path = f"{LOCAL_URL}/api/battles/{str(battle_id)}/logs"
+    return base_path + "/" if log_id is None else f"{base_path}/{str(log_id)}/"
+
+# Request helpers
+def get_user(user_id=None, code=200):
+    if user_id:
+        res = requests.get(gen_users_path(user_id))
+    else:
+        res = requests.get(gen_users_path())
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_user(data=SAMPLE_USER, code=201):
+    res = requests.post(gen_users_path(), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_user(user_id, code=202):
+    res = requests.delete(gen_users_path(user_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_character(user_id, data=SAMPLE_CHARACTER, code=201):
+    res = requests.post(gen_characters_path(user_id), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def get_character(user_id, character_id, code=200):
+    res = requests.get(gen_characters_path(user_id, character_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_character(user_id, character_id, code=202):
+    res = requests.delete(gen_characters_path(user_id, character_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def get_weapon(weapon_id=None, code=200):
+    if weapon_id:
+        res = requests.get(gen_weapons_path(weapon_id))
+    else:
+        res = requests.get(gen_weapons_path())
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_weapon(data=SAMPLE_WEAPON, code=201):
+    res = requests.post(gen_weapons_path(), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_weapon(weapon_id, code=202):
+    res = requests.delete(gen_weapons_path(weapon_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_battle(data, code=201):
+    res = requests.post(gen_battles_path(), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_pvp_battle(code=201):
+    challenger_user_id = create_user()["data"]["id"]
+    challenger_id = create_character(challenger_user_id)["data"]["id"]
+    opponent_user_id = create_user()["data"]["id"]
+    opponent_id = create_character(opponent_user_id)["data"]["id"]
+    battle = SAMPLE_BATTLE(challenger_id, opponent_id)
+    return create_battle(battle, code)
+
+def create_ai_battle(code=201):
+    challenger_user_id = create_user()["data"]["id"]
+    challenger_id = create_character(challenger_user_id)["data"]["id"]
+    battle = SAMPLE_BATTLE(challenger_id)
+    return create_battle(battle, code)
+
+def get_battle(battle_id, code=200):
+    res = requests.get(gen_battles_path(battle_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_battle(battle_id, code=202):
+    res = requests.delete(gen_battles_path(battle_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def create_log(battle_id, data=SAMPLE_LOG, code=201):
+    res = requests.post(gen_logs_path(battle_id), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def get_log(battle_id, log_id, code=200):
+    res = requests.get(gen_logs_path(battle_id, log_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_log(battle_id, log_id, code=202):
+    res = requests.delete(gen_logs_path(battle_id, log_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def bad_request_checker(sample, create, error, nullable=None):
+    for (field, value) in sample.items():
+        # Check incorrect field type
+        wrong_type = copy(sample)
+        f_type = type(value)
+        if f_type == str:
+            wrong_type[field] = 42
+        elif f_type == int:
+            wrong_type[field] = "bad"
+        body = create(wrong_type, 400)
+        assert not body["success"]
+        assert body["error"] == error
+        
+        if nullable and field in nullable:
+            continue
+
+        # Check missing field
+        missing_field = copy(sample)
+        del missing_field[field]
+        body = create(missing_field, 400)
+        assert not body["success"]
+        assert body["error"] == error
+
 # Response handler for unwrapping jsons, provides more useful error messages
 def unwrap_response(response, body={}):
     try:
@@ -75,96 +201,56 @@ def unwrap_response(response, body={}):
             """)
 
 class TestRoutes(unittest.TestCase):
+    
+    ###########
+    #  USERS  #
+    ###########
+
     def test_get_initial_users(self):
-        res = requests.get(gen_users_path())
-        assert res.status_code == 200
-        body = unwrap_response(res)
-        assert body["success"]
+        assert get_user()["success"]
     
     def test_create_user(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
+        body = create_user()
         user = body["data"]
-
         assert body["success"]
         assert user["username"] == SAMPLE_USER["username"]
         assert user["characters"] == []
         assert user["friends"] == []
-
+    
     def test_create_user_bad_request(self):
-        # Test incorrect field name
-        res = requests.post(gen_users_path(), data=json.dumps({"beep": "Chalos"}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == USER_BAD_REQUEST
-
-        # Test incorrect field type
-        res = requests.post(gen_users_path(), data=json.dumps({"username": 0}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == USER_BAD_REQUEST
-
+        bad_request_checker(SAMPLE_USER, create_user, USER_BAD_REQUEST)
+    
     def test_get_user(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
-
-        res = requests.get(gen_users_path(user_id))
-        assert res.status_code == 200
-        body = unwrap_response(res)
-
-        assert body["success"]
+        user_id = create_user()["data"]["id"]
+        assert get_user(user_id)["success"]
 
     def test_get_invalid_user(self):
-        res = requests.get(gen_users_path(1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_user(100000, 404)
         assert not body["success"]
         assert body["error"] == USER_NOT_FOUND
 
     def test_delete_user(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
-
-        res = requests.delete(gen_users_path(user_id))
-        assert res.status_code == 202
-        body = unwrap_response(res)
-
-        assert body["success"]
-
-        res = requests.get(gen_users_path(user_id))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        user_id = create_user()["data"]["id"]
+        assert delete_user(user_id)["success"]
+        
+        body = get_user(user_id, 404)
         assert not body["success"]
         assert body["error"] == USER_NOT_FOUND
 
     def test_delete_invalid_user(self):
-        res = requests.delete(gen_users_path(1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = delete_user(100000, 404)
         assert not body["success"]
         assert body["error"] == USER_NOT_FOUND
     
+    ################
+    #  CHARACTERS  #
+    ################
+
     def test_create_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
+        user_id = create_user()["data"]["id"]
 
-        res = requests.post(gen_characters_path(user_id), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
+        body = create_character(user_id)
         character = body["data"]
-
         assert body["success"]
         assert character["name"] == SAMPLE_CHARACTER["name"]
         assert character["mhp"] == 10
@@ -172,257 +258,331 @@ class TestRoutes(unittest.TestCase):
         assert character["equipped"] == None
 
     def test_create_character_bad_request(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
+        user_id = create_user()["data"]["id"]
+        wrapper = lambda data, code: create_character(user_id, data, code)
 
-        # Test incorrect field name
-        res = requests.post(gen_characters_path(user_id), data=json.dumps({"boop": "Chalos"}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == CHARACTER_BAD_REQUEST
-
-        # Test incorrect field type
-        res = requests.post(gen_characters_path(user_id), data=json.dumps({"name": 0}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == CHARACTER_BAD_REQUEST
+        bad_request_checker(SAMPLE_CHARACTER, wrapper, CHARACTER_BAD_REQUEST)
 
     def test_create_character_invalid_user(self):
-        res = requests.post(gen_characters_path(1000), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 404
-        body = unwrap_response(res)
+        body = create_character(100000, code=404)
         assert not body["success"]
         assert body["error"] == CHARACTER_USER_NOT_FOUND
     
     def test_get_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
-
-        res = requests.post(gen_characters_path(user_id), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        character_id = body["data"]["id"]
-
-        res = requests.get(gen_characters_path(user_id, character_id))
-        assert res.status_code == 200
-        body = unwrap_response(res)
-
-        assert body["success"]
-
-        character = body["data"]
-
-        assert character["name"] == SAMPLE_CHARACTER["name"]
-        assert character["mhp"] == 10
-        assert character["atk"] == 2
-        assert character["equipped"] == None
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        assert get_character(user_id, character_id)["success"]
 
     def test_get_forbidden_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        first_user_id = body["data"]["id"]
+        first_user_id = create_user()["data"]["id"]
+        first_character_id = create_character(first_user_id)["data"]["id"]
+        second_user_id = create_user()["data"]["id"]
 
-        res = requests.post(gen_characters_path(first_user_id), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        character_id = body["data"]["id"]
-
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        second_user_id = body["data"]["id"]
-
-        res = requests.get(gen_characters_path(second_user_id, character_id))
-        assert res.status_code == 403
-        body = unwrap_response(res)
-
+        body = get_character(second_user_id, first_character_id, 403)
         assert not body["success"]
         assert body["error"] == CHARACTER_FORBIDDEN
 
     def test_get_character_invalid_user(self):
-        res = requests.get(gen_characters_path(1000, 0))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_character(100000, 0, 404)
         assert not body["success"]
         assert body["error"] == CHARACTER_USER_NOT_FOUND
 
     def test_get_invalid_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
+        user_id = create_user()["data"]["id"]
 
-        res = requests.get(gen_characters_path(user_id, 1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_character(user_id, 100000, 404)
         assert not body["success"]
         assert body["error"] == CHARACTER_NOT_FOUND
 
     def test_delete_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        assert delete_character(user_id, character_id)["success"]
 
-        res = requests.post(gen_characters_path(user_id), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        character_id = body["data"]["id"]
-
-        res = requests.delete(gen_characters_path(user_id, character_id))
-        assert res.status_code == 202
-        body = unwrap_response(res)
-
-        assert body["success"]
-
-        res = requests.get(gen_characters_path(user_id, character_id))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_character(user_id, character_id, 404)
         assert not body["success"]
         assert body["error"] == CHARACTER_NOT_FOUND
 
     def test_delete_forbidden_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        first_user_id = body["data"]["id"]
+        first_user_id = create_user()["data"]["id"]
+        first_character_id = create_character(first_user_id)["data"]["id"]
+        second_user_id = create_user()["data"]["id"]
 
-        res = requests.post(gen_characters_path(first_user_id), data=json.dumps(SAMPLE_CHARACTER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        character_id = body["data"]["id"]
-
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        second_user_id = body["data"]["id"]
-
-        res = requests.delete(gen_characters_path(second_user_id, character_id))
-        assert res.status_code == 403
-        body = unwrap_response(res)
-
+        body = delete_character(second_user_id, first_character_id, 403)
         assert not body["success"]
         assert body["error"] == CHARACTER_FORBIDDEN
 
     def test_delete_character_invalid_user(self):
-        res = requests.delete(gen_characters_path(1000, 0))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = delete_character(100000, 0, 404)
         assert not body["success"]
         assert body["error"] == CHARACTER_USER_NOT_FOUND
 
     def test_delete_invalid_character(self):
-        res = requests.post(gen_users_path(), data=json.dumps(SAMPLE_USER))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        user_id = body["data"]["id"]
+        user_id = create_user()["data"]["id"]
 
-        res = requests.delete(gen_characters_path(user_id, 1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = delete_character(user_id, 100000, 404)
         assert not body["success"]
         assert body["error"] == CHARACTER_NOT_FOUND
 
+    #############
+    #  WEAPONS  #
+    #############
+
     def test_get_initial_weapons(self):
-        res = requests.get(gen_weapons_path())
-        assert res.status_code == 200
-        body = unwrap_response(res)
-        assert body["success"]
+        assert get_weapon()["success"]
 
     def test_create_weapon(self):
-        res = requests.post(gen_weapons_path(), data=json.dumps(SAMPLE_WEAPON))
-        assert res.status_code == 201
-        body = unwrap_response(res)
+        body = create_weapon()
         weapon = body["data"]
-
         assert body["success"]
         assert weapon["name"] == SAMPLE_WEAPON["name"]
         assert weapon["atk"] == SAMPLE_WEAPON["atk"]
 
     def test_create_weapon_bad_request(self):
-        # Test incorrect field names
-        res = requests.post(gen_weapons_path(), data=json.dumps({"ding": "dong", "atk": 5}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == WEAPON_BAD_REQUEST
-
-        res = requests.post(gen_weapons_path(), data=json.dumps({"name": "dong", "dong": 5}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == WEAPON_BAD_REQUEST
-
-        # Test incorrect field types
-        res = requests.post(gen_weapons_path(), data=json.dumps({"name": 0, "atk": 0}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == WEAPON_BAD_REQUEST
-
-        res = requests.post(gen_weapons_path(), data=json.dumps({"name": "0", "atk": "0"}))
-        assert res.status_code == 400
-        body = unwrap_response(res)
-        assert not body["success"]
-        assert body["error"] == WEAPON_BAD_REQUEST
+        bad_request_checker(SAMPLE_WEAPON, create_weapon, WEAPON_BAD_REQUEST)
 
     def test_get_weapon(self):
-        res = requests.post(gen_weapons_path(), data=json.dumps(SAMPLE_WEAPON))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        weapon_id = body["data"]["id"]
-
-        res = requests.get(gen_weapons_path(weapon_id))
-        assert res.status_code == 200
-        body = unwrap_response(res)
-
-        assert body["success"]
+        weapon_id = create_weapon()["data"]["id"]
+        assert get_weapon(weapon_id)["success"]
 
     def test_get_invalid_weapon(self):
-        res = requests.get(gen_weapons_path(1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_weapon(100000, 404)
         assert not body["success"]
         assert body["error"] == WEAPON_NOT_FOUND
 
     def test_delete_weapon(self):
-        res = requests.post(gen_weapons_path(), data=json.dumps(SAMPLE_WEAPON))
-        assert res.status_code == 201
-        body = unwrap_response(res)
-        weapon_id = body["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        assert delete_weapon(weapon_id)["success"]
 
-        res = requests.delete(gen_weapons_path(weapon_id))
-        assert res.status_code == 202
-        body = unwrap_response(res)
-
-        assert body["success"]
-
-        res = requests.get(gen_weapons_path(weapon_id))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = get_weapon(weapon_id, 404)
         assert not body["success"]
         assert body["error"] == WEAPON_NOT_FOUND
 
     def test_delete_invalid_weapon(self):
-        res = requests.delete(gen_weapons_path(1000))
-        assert res.status_code == 404
-        body = unwrap_response(res)
-
+        body = delete_weapon(100000, 404)
         assert not body["success"]
         assert body["error"] == WEAPON_NOT_FOUND
+
+    #############
+    #  BATTLES  #
+    #############
+
+    def test_create_pvp_battle(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        opponent_user_id = create_user()["data"]["id"]
+        opponent_id = create_character(opponent_user_id)["data"]["id"]
+        pvp_battle = SAMPLE_BATTLE(challenger_id, opponent_id)
+
+        body = create_battle(pvp_battle)
+        battle = body["data"]
+        assert body["success"]
+        assert battle["challenger_id"] == pvp_battle["challenger_id"]
+        assert battle["opponent_id"] == pvp_battle["opponent_id"]
+        assert battle["logs"] == []
+        assert battle["started"] == False
+        assert battle["accepted"] == None
+
+    def test_create_ai_battle(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        ai_battle = SAMPLE_BATTLE(challenger_id)
+
+        body = create_battle(ai_battle)
+        battle = body["data"]
+        assert body["success"]
+        assert battle["challenger_id"] == ai_battle["challenger_id"]
+        assert battle["opponent_id"] == None
+        # TODO: assert for log
+        assert battle["started"] == True
+        assert battle["accepted"] == True
+
+    def test_create_battle_bad_request(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        opponent_user_id = create_user()["data"]["id"]
+        opponent_id = create_character(opponent_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id, opponent_id)
+
+        bad_request_checker(battle, create_battle, BATTLE_BAD_REQUEST, nullable=["opponent_id"])
+
+    def test_create_forbidden_battle_challenger(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id)
+        create_battle(battle)
+
+        new_foe_user_id = create_user()["data"]["id"]
+        new_foe_id = create_character(new_foe_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id, new_foe_id)
+        
+        body = create_battle(battle, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_CHALLENGER_FORBIDDEN
+
+    def test_create_forbidden_battle_opponent(self):
+        opponent_user_id = create_user()["data"]["id"]
+        opponent_id = create_character(opponent_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(opponent_id)
+        create_battle(battle)
+
+        new_foe_user_id = create_user()["data"]["id"]
+        new_foe_id = create_character(new_foe_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(new_foe_id, opponent_id)
+        
+        body = create_battle(battle, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_OPPONENT_FORBIDDEN
+
+    def test_create_forbidden_battle_same(self):
+        same_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(same_user_id)["data"]["id"]
+        opponent_id = create_character(same_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id, opponent_id)
+        
+        body = create_battle(battle, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_SAME_FORBIDDEN
+
+    def test_create_forbidden_battle_pending(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        opponent_user_id = create_user()["data"]["id"]
+        opponent_id = create_character(opponent_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id, opponent_id)
+        create_battle(battle)
+
+        body = create_battle(battle, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_PENDING_FORBIDDEN
+
+        reversed_battle = SAMPLE_BATTLE(opponent_id, challenger_id)
+
+        body = create_battle(reversed_battle, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_PENDING_FORBIDDEN
+
+    def test_create_battle_invalid_challenger(self):
+        opponent_user_id = create_user()["data"]["id"]
+        opponent_id = create_character(opponent_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(100000, opponent_id)
+
+        body = create_battle(battle, 404)
+        assert not body["success"]
+        assert body["error"] == BATTLE_CHALLENGER_NOT_FOUND
+
+    def test_create_battle_invalid_opponent(self):
+        challenger_user_id = create_user()["data"]["id"]
+        challenger_id = create_character(challenger_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(challenger_id, 100000)
+
+        body = create_battle(battle, 404)
+        assert not body["success"]
+        assert body["error"] == BATTLE_OPPONENT_NOT_FOUND
+
+    def test_get_battle(self):
+        battle_id = create_pvp_battle()["data"]["id"]
+        assert get_battle(battle_id)["success"]
+
+    def test_get_invalid_battle(self):
+        body = get_battle(100000, 404)
+        assert not body["success"]
+        assert body["error"] == BATTLE_NOT_FOUND
+
+    def test_delete_battle(self):
+        weapon_id = create_pvp_battle()["data"]["id"]
+        assert delete_battle(weapon_id)["success"]
+        
+        body = get_battle(weapon_id, 404)
+        assert not body["success"]
+        assert body["error"] == BATTLE_NOT_FOUND
+
+    def test_delete_invalid_user(self):
+        body = delete_battle(100000, 404)
+        assert not body["success"]
+        assert body["error"] == BATTLE_NOT_FOUND
+
+    ##########
+    #  LOGS  #
+    ##########
+
+    def test_create_log(self):
+        battle_id = create_ai_battle()["data"]["id"] # we create one less user/character using ai instead of pvp
+        body = create_log(battle_id)
+        log = body["data"]
+        assert body["success"]
+        assert log["timestamp"] == SAMPLE_LOG["timestamp"]
+        assert log["challenger_hp"] == SAMPLE_LOG["challenger_hp"]
+        assert log["opponent_hp"] == SAMPLE_LOG["opponent_hp"]
+        assert log["action"] == SAMPLE_LOG["action"]
+
+    def test_create_log_bad_request(self):
+        battle_id = create_ai_battle()["data"]["id"]
+        wrapper = lambda data, code: create_log(battle_id, data, code)
+
+        bad_request_checker(SAMPLE_LOG, wrapper, LOG_BAD_REQUEST)
+
+    def test_create_log_invalid_battle(self):
+        body = create_log(100000, code=404)
+        assert not body["success"]
+        assert body["error"] == LOG_BATTLE_NOT_FOUND
+        
+    def test_get_log(self):
+        battle_id = create_ai_battle()["data"]["id"]
+        log_id = create_log(battle_id)["data"]["id"]
+        assert get_log(battle_id, log_id)
+
+    def test_get_forbidden_log(self):
+        first_battle_id = create_ai_battle()["data"]["id"]
+        first_log_id = create_log(first_battle_id)["data"]["id"]
+        second_battle_id = create_ai_battle()["data"]["id"]
+
+        body = get_log(second_battle_id, first_log_id, 403)
+        assert not body["success"]
+        assert body["error"] == LOG_FORBIDDEN
+
+    def test_get_log_invalid_battle(self):
+        body = get_log(100000, 0, 404)
+        assert not body["success"]
+        assert body["error"] == LOG_BATTLE_NOT_FOUND
+
+    def test_get_invalid_log(self):
+        battle_id = create_ai_battle()["data"]["id"]
+
+        body = get_log(battle_id, 100000, 404)
+        assert not body["success"]
+        assert body["error"] == LOG_NOT_FOUND
+
+    def test_delete_log(self):
+        battle_id = create_ai_battle()["data"]["id"]
+        log_id = create_log(battle_id)["data"]["id"]
+        assert delete_log(battle_id, log_id)["success"]
+
+        body = get_log(battle_id, log_id, 404)
+        assert not body["success"]
+        assert body["error"] == LOG_NOT_FOUND
+
+    def test_delete_forbidden_log(self):
+        first_battle_id = create_ai_battle()["data"]["id"]
+        first_log_id = create_log(first_battle_id)["data"]["id"]
+        second_battle_id = create_ai_battle()["data"]["id"]
+
+        body = delete_log(second_battle_id, first_log_id, 403)
+        assert not body["success"]
+        assert body["error"] == LOG_FORBIDDEN
+
+    def test_delete_log_invalid_user(self):
+        body = delete_log(100000, 0, 404)
+        assert not body["success"]
+        assert body["error"] == LOG_BATTLE_NOT_FOUND
+
+    def test_delete_invalid_log(self):
+        battle_id = create_ai_battle()["data"]["id"]
+
+        body = delete_log(battle_id, 100000, 404)
+        assert not body["success"]
+        assert body["error"] == LOG_NOT_FOUND
+
 
 def run_tests():
     sleep(1.5)

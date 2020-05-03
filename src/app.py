@@ -172,7 +172,8 @@ def create_log(bid):
     body = json.loads(request.data)
     if not is_valid(body, [("timestamp", int), ("challenger_hp", int),
                            ("opponent_hp", int), ("action", str)]):
-        return failure_response("Provide a proper request of the form {timestamp: string, challenger_hp: number, opponent_hp: number, action: string}", 400)
+        return failure_response("Provide a proper request of the form {timestamp: number, "
+        "challenger_hp: number, opponent_hp: number, action: string}", 400)
     log = dao.create_log(
         timestamp=body.get("timestamp"),
         challenger_hp=body.get("challenger_hp"),
