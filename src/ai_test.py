@@ -15,6 +15,7 @@ SAMPLE_CHARACTER = {"name": "Chalos"}
 SAMPLE_WEAPON = {"name": "Rubber Duck", "atk": 1337}
 SAMPLE_BATTLE = lambda chal_id, o_id=None: {"challenger_id": chal_id, "opponent_id": o_id}
 SAMPLE_LOG = {"timestamp": 1234, "challenger_hp": 20, "opponent_hp": 20, "action": "COVID Outbreak"}
+SAMPLE_REQUEST = lambda kind, s_id, r_id=None: {"kind": kind, "sender_id": s_id, "receiver_id": r_id}
 
 # API Documentation error messages
 USER_BAD_REQUEST = "Provide a proper request of the form {username: string}"
@@ -42,6 +43,22 @@ LOG_FORBIDDEN = "This log does not belong to the provided battle!"
 LOG_BATTLE_NOT_FOUND = "The provided battle does not exist!"
 LOG_NOT_FOUND = "This log does not exist!"
 
+REQUEST_BAD_REQUEST = "Provide a proper request of the form {kind: string, sender_id: number, \
+receiver_id: number}"
+REQUEST_BAD_REQUEST_KIND = "Field kind must be either friend or battle"
+REQUEST_FRIEND_YOURSELF_FORBIDDEN = "You can’t send a friend request to yourself!"
+REQUEST_FRIEND_PENDING_FORBIDDEN = "There is already a pending friend request between these users!"
+REQUEST_FRIEND_ALREADY_FORBIDDEN = "You are already friends!"
+REQUEST_BATTLE_PENDING_FORBIDDEN = "There is already a pending battle request between these characters!"
+REQUEST_BATTLE_SENDER_FORBIDDEN = "The sender is already in a battle!"
+REQUEST_BATTLE_RECEIVER_FORBIDDEN = "The receiver is already in a battle!"
+REQUEST_BATTLE_SAME_FORBIDDEN = "The provided characters belong to the same user!"
+REQUEST_FRIEND_SENDER_NOT_FOUND = "The sending user does not exist!"
+REQUEST_FRIEND_RECEIVER_NOT_FOUND = "The receiving user does not exist!"
+REQUEST_BATTLE_SENDER_NOT_FOUND = "The sending character does not exist!"
+REQUEST_BATTLE_RECEIVER_NOT_FOUND = "The receiving character does not exist!"
+REQUEST_NOT_FOUND = "This request does not exist!"
+
 # Request endpoint generators
 def gen_users_path(user_id=None):
     base_path = f"{LOCAL_URL}/api/users"
@@ -62,6 +79,10 @@ def gen_battles_path(battle_id=None):
 def gen_logs_path(battle_id, log_id=None):
     base_path = f"{LOCAL_URL}/api/battles/{str(battle_id)}/logs"
     return base_path + "/" if log_id is None else f"{base_path}/{str(log_id)}/"
+
+def gen_requests_path(request_id=None):
+    base_path = f"{LOCAL_URL}/api/requests"
+    return base_path + "/" if request_id is None else f"{base_path}/{str(request_id)}/"
 
 # Request helpers
 def get_user(user_id=None, code=200):
@@ -156,6 +177,26 @@ def get_log(battle_id, log_id, code=200):
 
 def delete_log(battle_id, log_id, code=202):
     res = requests.delete(gen_logs_path(battle_id, log_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def get_request(request_id=None, code=200):
+    res = requests.get(gen_requests_path(request_id))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def build_request(kind):
+    sender_id = create_user()["data"]["id"]
+    receiver_id = create_user()["data"]["id"]
+    return SAMPLE_REQUEST(kind, sender_id, receiver_id)
+
+def create_request(data, code=201):
+    res = requests.post(gen_requests_path(), data=json.dumps(data))
+    assert res.status_code == code
+    return unwrap_response(res)
+
+def delete_request(request_id, code=202):
+    res = requests.delete(gen_requests_path(request_id))
     assert res.status_code == code
     return unwrap_response(res)
 
@@ -378,7 +419,7 @@ class TestRoutes(unittest.TestCase):
         assert body["success"]
         assert battle["challenger_id"] == pvp_battle["challenger_id"]
         assert battle["opponent_id"] == pvp_battle["opponent_id"]
-        assert battle["logs"] == []
+        # TODO: assert for log
         assert battle["done"] == False
 
     def test_create_ai_battle(self):
@@ -469,14 +510,14 @@ class TestRoutes(unittest.TestCase):
         assert body["error"] == BATTLE_NOT_FOUND
 
     def test_delete_battle(self):
-        weapon_id = create_pvp_battle()["data"]["id"]
-        assert delete_battle(weapon_id)["success"]
+        battle_id = create_pvp_battle()["data"]["id"]
+        assert delete_battle(battle_id)["success"]
         
-        body = get_battle(weapon_id, 404)
+        body = get_battle(battle_id, 404)
         assert not body["success"]
         assert body["error"] == BATTLE_NOT_FOUND
 
-    def test_delete_invalid_user(self):
+    def test_delete_invalid_battle(self):
         body = delete_battle(100000, 404)
         assert not body["success"]
         assert body["error"] == BATTLE_NOT_FOUND
@@ -562,6 +603,163 @@ class TestRoutes(unittest.TestCase):
         assert not body["success"]
         assert body["error"] == LOG_NOT_FOUND
 
+    ##############
+    #  REQUESTS  #
+    ##############
+
+    def test_create_request(self):
+        sample_request = build_request("friend") # input does not matter
+        body = create_request(sample_request)
+        request = body["data"]
+        assert body["success"]
+        assert request["kind"] == sample_request["kind"]
+        assert request["sender_id"] == sample_request["sender_id"]
+        assert request["receiver_id"] == sample_request["receiver_id"]
+        assert request["accepted"] == None
+
+    def test_create_request_bad_request(self):
+        req = build_request("battle") # input does not matter
+        return bad_request_checker(req, create_request, REQUEST_BAD_REQUEST)
+
+    def test_create_request_bad_request_kind(self):
+        body = create_request(build_request("d'oh"), 400)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BAD_REQUEST_KIND
+
+    def test_create_friend_request_forbidden_yourself(self):
+        same_user_id = create_user()["data"]["id"]
+        body = create_request(SAMPLE_REQUEST("friend", same_user_id, same_user_id), 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_FRIEND_YOURSELF_FORBIDDEN
+
+    def test_create_friend_request_forbidden_pending(self):
+        sender_id = create_user()["data"]["id"]
+        receiver_id = create_user()["data"]["id"]
+        create_request(SAMPLE_REQUEST("friend", sender_id, receiver_id))
+
+        body = create_request(SAMPLE_REQUEST("friend", sender_id, receiver_id), 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_FRIEND_PENDING_FORBIDDEN
+
+        body = create_request(SAMPLE_REQUEST("friend", receiver_id, sender_id), 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_FRIEND_PENDING_FORBIDDEN
+    
+    
+    def test_create_friend_request_forbidden_already(self):
+        pass # Add friend creation functionality first
+
+    def test_create_battle_request_forbidden_pending(self):
+        sending_user_id = create_user()["data"]["id"]
+        sender_id = create_character(sending_user_id)["data"]["id"]
+        receiving_user_id = create_user()["data"]["id"]
+        receiver_id = create_character(receiving_user_id)["data"]["id"]
+        create_request(SAMPLE_REQUEST("battle", sender_id, receiver_id))
+
+        body = create_request(SAMPLE_REQUEST("battle", sender_id, receiver_id), 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_PENDING_FORBIDDEN
+
+        body = create_request(SAMPLE_REQUEST("battle", receiver_id, sender_id), 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_PENDING_FORBIDDEN
+
+    def test_create_battle_request_forbidden_sender(self):
+        sending_user_id = create_user()["data"]["id"]
+        sender_id = create_character(sending_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(sender_id)
+        create_battle(battle)
+
+        receiving_user_id = create_user()["data"]["id"]
+        receiver_id = create_character(receiving_user_id)["data"]["id"]
+        request = SAMPLE_REQUEST("battle", sender_id, receiver_id)
+
+        body = create_request(request, 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_SENDER_FORBIDDEN
+    
+    def test_create_battle_request_forbidden_receiver(self):
+        sending_user_id = create_user()["data"]["id"]
+        sender_id = create_character(sending_user_id)["data"]["id"]
+
+        receiving_user_id = create_user()["data"]["id"]
+        receiver_id = create_character(receiving_user_id)["data"]["id"]
+        battle = SAMPLE_BATTLE(receiver_id)
+        create_battle(battle)
+
+        request = SAMPLE_REQUEST("battle", sender_id, receiver_id)
+
+        body = create_request(request, 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_RECEIVER_FORBIDDEN
+
+    def test_create_battle_request_forbidden_same(self):
+        same_user_id = create_user()["data"]["id"]
+        sender_id = create_character(same_user_id)["data"]["id"]
+        receiver_id = create_character(same_user_id)["data"]["id"]
+        request = SAMPLE_REQUEST("battle", sender_id, receiver_id)
+
+        body = create_request(request, 403)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_SAME_FORBIDDEN
+
+    def test_create_friend_request_sender_not_found(self):
+        receiver_id = create_user()["data"]["id"]
+        request = SAMPLE_REQUEST("friend", 100000, receiver_id)
+        
+        body = create_request(request, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_FRIEND_SENDER_NOT_FOUND
+
+    def test_create_friend_request_receiver_not_found(self):
+        sender_id = create_user()["data"]["id"]
+        request = SAMPLE_REQUEST("friend", sender_id, 100000)
+        
+        body = create_request(request, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_FRIEND_RECEIVER_NOT_FOUND
+
+    def test_create_battle_request_sender_not_found(self):
+        receiving_user_id = create_user()["data"]["id"]
+        receiver_id = create_character(receiving_user_id)["data"]["id"]
+        request = SAMPLE_REQUEST("battle", 100000, receiver_id)
+        
+        body = create_request(request, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_SENDER_NOT_FOUND
+
+    def test_create_battle_request_receiver_not_found(self):
+        sending_user_id = create_user()["data"]["id"]
+        sender_id = create_character(sending_user_id)["data"]["id"]
+        request = SAMPLE_REQUEST("battle", sender_id, 100000)
+        
+        body = create_request(request, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_BATTLE_RECEIVER_NOT_FOUND
+
+    def test_get_request(self):
+        request_id = create_request(build_request("friend"))["data"]["id"] # input doesn't matter
+        body = get_request(request_id)
+        assert body["success"]
+
+    def test_get_invalid_request(self):
+        body = get_request(100000, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_NOT_FOUND
+
+    def test_delete_request(self):
+        request_id = create_request(build_request("friend"))["data"]["id"] # input doesn't matter
+        body = delete_request(request_id)
+        assert body["success"]
+
+        body = get_request(request_id, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_NOT_FOUND
+
+    def test_delete_invalid_request(self):
+        body = delete_request(100000, 404)
+        assert not body["success"]
+        assert body["error"] == REQUEST_NOT_FOUND
 
 def run_tests():
     sleep(1.5)
