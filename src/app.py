@@ -24,13 +24,13 @@ def success_response(data, code=200):
 def failure_response(message, code=404):
     return json.dumps({"success": False, "error": message}), code
 
-exhaustive_check = lambda body, fields: any([body.get(x[0], None) == 
-                                             None for x in fields])
-type_check = lambda body, fields: any([type(body.get(x[0], None)) != 
-                                       x[1] for x in fields])
+exhaustive_check = lambda body, fields: any([body.get(x[0], None) == None for x in fields])
+type_check = lambda body, fields: any([type(body.get(x[0], None)) != x[1] for x in fields])
 
 def is_valid(body, fields):
     return not (exhaustive_check(body, fields) or type_check(body, fields))
+
+specific_check = lambda value, options: any([value == option for option in options])
 
 ###########
 #  PATHS  #
@@ -47,10 +47,12 @@ BATTLE_PATH = API_PATH + "battles/"
 SPECIFIC_BATTLE_PATH = BATTLE_PATH + "<int:bid>/"
 LOG_PATH = SPECIFIC_BATTLE_PATH + "logs/"
 SPECIFIC_LOG_PATH = LOG_PATH + "<int:lid>/"
+REQUEST_PATH = API_PATH + "requests/"
+SPECIFIC_REQUEST_PATH = REQUEST_PATH + "<int:rid>/"
 
-############
-#  ROUTES  #
-############
+#################
+#  USER ROUTES  #
+#################
 
 @app.route(USER_PATH)
 def get_all_users():
@@ -80,11 +82,16 @@ def delete_user(uid):
         return failure_response("This user does not exist!")
     return success_response(user, 202)
 
+######################
+#  CHARACTER ROUTES  #
+######################
+
 @app.route(CHARACTER_PATH, methods=["POST"])
 def create_character(uid):
     body = json.loads(request.data)
     if not is_valid(body, [("name", str)]):
-        return failure_response("Provide a proper request of the form {name: string}", 400)
+        return failure_response("Provide a proper request of the form "
+                                "{name: string}", 400)
     character = dao.create_character(
         name=body.get("name"),
         uid=uid
@@ -106,6 +113,10 @@ def delete_character(uid, cid):
     if type(character) == str:
         return failure_response(character, code)
     return success_response(character, code)
+
+###################
+#  WEAPON ROUTES  #
+###################
 
 @app.route(WEAPON_PATH)
 def get_all_weapons():
@@ -137,6 +148,10 @@ def delete_weapon(wid):
         return failure_response("This weapon does not exist!")
     return success_response(weapon, 202)
 
+###################
+#  BATTLE ROUTES  #
+###################
+
 @app.route(BATTLE_PATH, methods=["POST"])
 def create_battle():
     body = json.loads(request.data)
@@ -166,6 +181,10 @@ def delete_battle(bid):
     if battle is None:
         return failure_response("This battle does not exist!")
     return success_response(battle, 202)
+
+################
+#  LOG ROUTES  #
+################
 
 @app.route(LOG_PATH, methods=["POST"])
 def create_log(bid):
@@ -198,6 +217,41 @@ def delete_log(bid, lid):
     if type(log) == str:
         return failure_response(log, code)
     return success_response(log, code)
+
+##################
+#  ROUTE ROUTES  #
+##################
+
+@app.route(REQUEST_PATH, methods=["POST"])
+def create_request():
+    body = json.loads(request.data)
+    if not is_valid(body, [("kind", str), ("sender_id", int), ("receiver_id", int)]):
+        return failure_response("Provide a proper request of the form {kind: string, "
+                                "sender_id: number, receiver_id: number}", 400)
+    if not specific_check(body.get("kind"), ["friend", "battle"]):
+        return failure_response("Field kind must be either friend or battle", 400)
+    req, code = dao.create_request(
+        kind=body.get("kind"),
+        sender_id=body.get("sender_id"),
+        receiver_id=body.get("receiver_id")
+    )
+    if type(req) == str:
+        return failure_response(req, code)
+    return success_response(req, code)
+
+@app.route(SPECIFIC_REQUEST_PATH)
+def get_request(rid):
+    req = dao.get_request(rid)
+    if req is None:
+        return failure_response("This request does not exist!")
+    return success_response(req)
+
+@app.route(SPECIFIC_REQUEST_PATH, methods=["DELETE"])
+def delete_request(rid):
+    req = dao.delete_request(rid)
+    if req is None:
+        return failure_response("This request does not exist!")
+    return success_response(req, 202)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

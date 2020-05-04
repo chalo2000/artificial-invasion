@@ -1,4 +1,4 @@
-from db import db, User, Character, Weapon, Battle, Log
+from db import db, User, Character, Weapon, Battle, Log, Request
 
 ###########
 #  USERS  #
@@ -205,3 +205,87 @@ def validate_log_request(bid, lid, delete):
     db.session.commit()
     return serialized_log, 202
   return serialized_log, 200
+
+##############
+#  REQUESTS  #
+##############
+
+def create_request(kind, sender_id, receiver_id):
+  if kind == "friend":
+    sender = User.query.filter_by(id=sender_id).first()
+    if sender is None:
+      return "The sending user does not exist!", 404
+
+    receiver = User.query.filter_by(id=receiver_id).first()
+    if receiver is None:
+      return "The receiving user does not exist!", 404
+    
+    if sender_id == receiver_id:
+      return "You can’t send a friend request to yourself!", 403
+
+    if check_friend_pending(sender_id, receiver_id):
+      return "There is already a pending friend request between these users!", 403
+
+    if receiver.serialize_friendless() in sender.friends:
+      return "You are already friends!"
+
+  elif kind == "battle":
+    sender = Character.query.filter_by(id=sender_id).first()
+    if sender is None:
+      return "The sending character does not exist!", 404
+
+    receiver = Character.query.filter_by(id=receiver_id).first()
+    if receiver is None:
+      return "The receiving character does not exist!", 404
+
+    if check_battle_pending(sender_id, receiver_id):
+      return "There is already a pending battle request between these characters!", 403
+
+    if is_battling(sender_id):
+      return "The sender is already in a battle!", 403
+
+    if is_battling(receiver_id):
+      return "The receiver is already in a battle!", 403
+
+    if sender.user_id == receiver.user_id:
+      return "The provided characters belong to the same user!", 403
+
+  new_request = Request(
+    kind=kind,
+    sender_id=sender_id,
+    receiver_id=receiver_id
+  )
+
+  db.session.add(new_request)
+  db.session.commit()
+  return new_request.serialize(), 201
+
+def check_friend_pending(first_id, second_id):
+  request_one = Request.query.filter_by(user_sender_id=first_id, 
+                                        user_receiver_id=second_id).first()
+  request_two = Request.query.filter_by(user_sender_id=second_id, 
+                                        user_receiver_id=first_id).first()
+  return request_one is not None or request_two is not None
+
+def check_battle_pending(first_id, second_id):
+  request_one = Request.query.filter_by(character_sender_id=first_id, 
+                                        character_receiver_id=second_id).first()
+  request_two = Request.query.filter_by(character_sender_id=second_id, 
+                                        character_receiver_id=first_id).first()
+  return request_one is not None or request_two is not None
+  
+def get_request(rid):
+  return validate_request_request(rid, delete=False)
+
+def delete_request(rid):
+  return validate_request_request(rid, delete=True)
+
+def validate_request_request(rid, delete):
+  req = Request.query.filter_by(id=rid).first()
+  if req is None:
+    return None
+  
+  if delete:
+    db.session.delete(req)
+    db.session.commit()
+  return req.serialize()

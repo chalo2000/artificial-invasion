@@ -100,7 +100,7 @@ class Battle(db.Model):
       "challenger_id": self.challenger_id,
       "opponent_id": self.opponent_id,
       "logs": [log.serialize() for log in self.logs],
-      "done": self.done,
+      "done": self.done
     }
 
 class Log(db.Model):
@@ -127,3 +127,39 @@ class Log(db.Model):
       "opponent_hp": self.opponent_hp,
       "action": self.action
     }
+
+class Request(db.Model):
+  __tablename__ = "request"
+  id = db.Column(db.Integer, primary_key=True)
+  kind = db.Column(db.String, nullable=False)
+  user_sender_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+  user_receiver_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+  character_sender_id = db.Column(db.Integer, db.ForeignKey("character.id"))
+  character_receiver_id = db.Column(db.Integer, db.ForeignKey("character.id"))
+  accepted = db.Column(db.Boolean)
+
+  def __init__(self, **kwargs):
+    self.kind = kwargs.get("kind", "")
+    if self.kind == "friend":
+      self.user_sender_id = kwargs.get("sender_id", 0)
+      self.user_receiver_id = kwargs.get("receiver_id", 0)
+    elif self.kind == "battle":
+      self.character_sender_id = kwargs.get("sender_id", 0)
+      self.character_receiver_id = kwargs.get("receiver_id", 0)
+    self.accepted = None
+
+  def __get_id(self, of):
+    if of == "sender":
+      return self.user_sender_id if self.kind == "friend" else self.character_sender_id
+    elif of == "receiver":
+      return self.user_receiver_id if self.kind == "friend" else self.character_receiver_id
+
+  def serialize(self):
+    return {
+      "id": self.id,
+      "kind": self.kind,
+      "sender_id": self.__get_id(of="sender"),
+      "receiver_id": self.__get_id(of="receiver"),
+      "accepted": self.accepted
+    }
+
