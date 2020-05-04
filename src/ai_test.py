@@ -32,7 +32,6 @@ BATTLE_BAD_REQUEST = 'Provide a proper request of the form {challenger_id: numbe
 BATTLE_CHALLENGER_FORBIDDEN = "The challenger is already in a battle!"
 BATTLE_OPPONENT_FORBIDDEN = "The opponent is already in a battle!"
 BATTLE_SAME_FORBIDDEN = "The challenger and opponent belong to the same user!"
-BATTLE_PENDING_FORBIDDEN = "There is already a battle request pending!"
 BATTLE_CHALLENGER_NOT_FOUND = "The challenger character does not exist!"
 BATTLE_OPPONENT_NOT_FOUND = "The opponent character does not exist!"
 BATTLE_NOT_FOUND = "This battle does not exist!"
@@ -380,8 +379,7 @@ class TestRoutes(unittest.TestCase):
         assert battle["challenger_id"] == pvp_battle["challenger_id"]
         assert battle["opponent_id"] == pvp_battle["opponent_id"]
         assert battle["logs"] == []
-        assert battle["started"] == False
-        assert battle["accepted"] == None
+        assert battle["done"] == False
 
     def test_create_ai_battle(self):
         challenger_user_id = create_user()["data"]["id"]
@@ -394,8 +392,7 @@ class TestRoutes(unittest.TestCase):
         assert battle["challenger_id"] == ai_battle["challenger_id"]
         assert battle["opponent_id"] == None
         # TODO: assert for log
-        assert battle["started"] == True
-        assert battle["accepted"] == True
+        assert battle["done"] == False
 
     def test_create_battle_bad_request(self):
         challenger_user_id = create_user()["data"]["id"]
@@ -443,24 +440,6 @@ class TestRoutes(unittest.TestCase):
         body = create_battle(battle, 403)
         assert not body["success"]
         assert body["error"] == BATTLE_SAME_FORBIDDEN
-
-    def test_create_forbidden_battle_pending(self):
-        challenger_user_id = create_user()["data"]["id"]
-        challenger_id = create_character(challenger_user_id)["data"]["id"]
-        opponent_user_id = create_user()["data"]["id"]
-        opponent_id = create_character(opponent_user_id)["data"]["id"]
-        battle = SAMPLE_BATTLE(challenger_id, opponent_id)
-        create_battle(battle)
-
-        body = create_battle(battle, 403)
-        assert not body["success"]
-        assert body["error"] == BATTLE_PENDING_FORBIDDEN
-
-        reversed_battle = SAMPLE_BATTLE(opponent_id, challenger_id)
-
-        body = create_battle(reversed_battle, 403)
-        assert not body["success"]
-        assert body["error"] == BATTLE_PENDING_FORBIDDEN
 
     def test_create_battle_invalid_challenger(self):
         opponent_user_id = create_user()["data"]["id"]

@@ -86,19 +86,13 @@ class Battle(db.Model):
   challenger_id = db.Column(db.Integer, db.ForeignKey("character.id"), nullable=False)
   opponent_id = db.Column(db.Integer, db.ForeignKey("character.id"))
   logs = db.relationship('Log', cascade="delete")
-  started = db.Column(db.Boolean, nullable=False)
-  accepted = db.Column(db.Boolean)
+  done = db.Column(db.Boolean, nullable=False)
 
   def __init__(self, **kwargs):
     self.challenger_id = kwargs.get("challenger_id", 0)
     self.opponent_id = kwargs.get("opponent_id", None)
     self.logs = []
-    if self.opponent_id is None:
-      self.started = True
-      self.accepted = True
-    else:
-      self.started = False
-      self.accepted = None
+    self.done = False
 
   def serialize(self):
     return {
@@ -106,8 +100,7 @@ class Battle(db.Model):
       "challenger_id": self.challenger_id,
       "opponent_id": self.opponent_id,
       "logs": [log.serialize() for log in self.logs],
-      "started": self.started,
-      "accepted": self.accepted
+      "done": self.done,
     }
 
 class Log(db.Model):

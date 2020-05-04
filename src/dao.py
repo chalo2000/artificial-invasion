@@ -129,9 +129,6 @@ def create_battle(challenger_id, opponent_id):
   if opponent_id is not None and is_battling(opponent_id):
     return "The opponent is already in a battle!", 403
 
-  if request_pending(challenger_id, opponent_id):
-    return "There is already a battle request pending!", 403
-
   new_battle = Battle(
     challenger_id=challenger_id,
     opponent_id=opponent_id
@@ -143,16 +140,9 @@ def create_battle(challenger_id, opponent_id):
 
 def is_battling(cid):
   first_check = Battle.query.filter_by(challenger_id=cid, 
-                                      started=True).first()
+                                      done=False).first()
   second_check = Battle.query.filter_by(opponent_id=cid, 
-                                      started=True).first()
-  return (first_check is not None) or (second_check is not None)
-
-def request_pending(challenger_id, opponent_id):
-  first_check = Battle.query.filter_by(challenger_id=challenger_id, 
-                                      opponent_id=opponent_id).first()
-  second_check = Battle.query.filter_by(challenger_id=opponent_id, 
-                                      opponent_id=challenger_id).first()
+                                      done=False).first()
   return (first_check is not None) or (second_check is not None)
 
 def get_battle(bid):
