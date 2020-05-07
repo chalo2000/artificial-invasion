@@ -278,7 +278,7 @@ def respond_to_request(rid):
         receiver_id=body.get("receiver_id"),
         accepted=body.get("accepted")
     )
-    if type(data) == str:
+    if type(data) == str and code is not 202:
         return failure_response(data, code)
     return success_response(data, code)
 

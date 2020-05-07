@@ -369,8 +369,7 @@ def respond_to_request(rid, receiver_id, accepted):
       sender.friends.append(receiver)
       response = receiver.serialize()
     elif request.kind == "battle":
-      battle, _ = create_battle(request.character_sender_id, receiver_id)
-      response = battle.serialize()
+      response, _ = create_battle(request.character_sender_id, receiver_id)
   
   request.accepted = accepted
   db.session.commit()
