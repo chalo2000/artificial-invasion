@@ -1,4 +1,5 @@
 from db import db, User, Character, Weapon, Battle, Log, Request
+import time
 
 ###########
 #  USERS  #
@@ -31,6 +32,26 @@ def validate_user_request(uid, delete):
     db.session.delete(user)
     db.session.commit()
   return user.serialize()
+
+def end_friendship(uid, ex_friend_id):
+  ending_user = User.query.filter_by(id=uid).first()
+  if ending_user is None:
+    return "The provided un-friender does not exist!", 404
+
+  ex_friend_user = User.query.filter_by(id=ex_friend_id).first()
+  if ex_friend_user is None:
+    return "The provided ex-friend does not exist!", 404
+
+  if uid == ex_friend_id:
+    return "You can never unfriend yourself!", 403
+  
+  if ex_friend_user not in ending_user.friends:
+    return "You aren’t friends with this user!", 403
+
+  ending_user.friends.remove(ex_friend_user)
+  ex_friend_user.friends.remove(ending_user)
+  db.session.commit()
+  return ex_friend_user.serialize(), 202
 
 ################
 #  CHARACTERS  #
@@ -133,10 +154,12 @@ def create_battle(challenger_id, opponent_id):
     challenger_id=challenger_id,
     opponent_id=opponent_id
   )
-
   db.session.add(new_battle)
   db.session.commit()
-  return new_battle.serialize(), 201
+
+  # Adding the starter log
+  starting_log = create_starter_log(challenger, opponent, new_battle.id)
+  return add_log(starting_log, new_battle.id), 201
 
 def is_battling(cid):
   first_check = Battle.query.filter_by(challenger_id=cid, 
@@ -144,6 +167,13 @@ def is_battling(cid):
   second_check = Battle.query.filter_by(opponent_id=cid, 
                                       done=False).first()
   return (first_check is not None) or (second_check is not None)
+
+def add_log(log, bid):
+  battle = Battle.query.filter_by(id=bid).first()
+  battle.logs.insert(0, log)
+
+  db.session.commit()
+  return battle.serialize()
 
 def get_battle(bid):
   return validate_battle_request(bid, delete=False)
@@ -179,7 +209,19 @@ def create_log(timestamp, challenger_hp, opponent_hp, action, bid):
 
   db.session.add(new_log)
   db.session.commit()
-  return new_log.serialize()
+  return new_log
+
+def create_starter_log(challenger, opponent, bid):
+  opponent_name = "AI" if opponent is None else opponent.name
+  action = f"The battle between Challenger {challenger.name} and Opponent {opponent_name} has begun."
+  opponent_mhp = challenger.mhp if opponent is None else opponent.mhp
+  return create_log(
+    timestamp=time.time_ns(),
+    challenger_hp=challenger.mhp,
+    opponent_hp=opponent_mhp,
+    action=action,
+    bid=bid
+  )
 
 def get_log(bid, lid):
   return validate_log_request(bid, lid, delete=False)
@@ -226,8 +268,8 @@ def create_request(kind, sender_id, receiver_id):
     if check_friend_pending(sender_id, receiver_id):
       return "There is already a pending friend request between these users!", 403
 
-    if receiver.serialize_friendless() in sender.friends:
-      return "You are already friends!"
+    if receiver in sender.friends:
+      return "You are already friends!", 403
 
   elif kind == "battle":
     sender = Character.query.filter_by(id=sender_id).first()
@@ -262,16 +304,20 @@ def create_request(kind, sender_id, receiver_id):
 
 def check_friend_pending(first_id, second_id):
   request_one = Request.query.filter_by(user_sender_id=first_id, 
-                                        user_receiver_id=second_id).first()
+                                        user_receiver_id=second_id,
+                                        accepted=None).first()
   request_two = Request.query.filter_by(user_sender_id=second_id, 
-                                        user_receiver_id=first_id).first()
+                                        user_receiver_id=first_id,
+                                        accepted=None).first()
   return request_one is not None or request_two is not None
 
 def check_battle_pending(first_id, second_id):
   request_one = Request.query.filter_by(character_sender_id=first_id, 
-                                        character_receiver_id=second_id).first()
+                                        character_receiver_id=second_id,
+                                        accepted=None).first()
   request_two = Request.query.filter_by(character_sender_id=second_id, 
-                                        character_receiver_id=first_id).first()
+                                        character_receiver_id=first_id,
+                                        accepted=None).first()
   return request_one is not None or request_two is not None
   
 def get_request(rid):
@@ -289,3 +335,58 @@ def validate_request_request(rid, delete):
     db.session.delete(req)
     db.session.commit()
   return req.serialize()
+
+def respond_to_request(rid, receiver_id, accepted):
+  request = Request.query.filter_by(id=rid).first()
+  if request is None:
+    return "This request does not exist!", 404
+  
+  receiver = (User.query.filter_by(id=receiver_id).first() if request.kind == "friend" 
+              else Character.query.filter_by(id=receiver_id).first())
+  if receiver is None:
+    return ("The receiving user does not exist!" if request.kind == "friend" else
+            "The receiving character does not exist!"), 404
+  
+  if get_request_id("sender", request) == receiver_id:
+    return "You can’t respond to your own request!", 403
+
+  if get_request_id("receiver", request) != receiver_id:
+    return "This request was not sent to you!", 403
+
+  if request.accepted is not None:
+    status = "accepted!" if request.accepted else "denied!"
+    return f"This request has already been {status}", 403
+
+  sender = (User.query.filter_by(id=request.user_sender_id).first() if request.kind == "friend" 
+            else Character.query.filter_by(id=request.character_sender_id).first())
+  
+  if not accepted:
+    sender_name = sender.username if request.kind == "friend" else sender.name
+    response = f"You have rejected {sender_name}’s {request.kind} request"
+  else:
+    if request.kind == "friend":
+      receiver.friends.append(sender)
+      sender.friends.append(receiver)
+      response = receiver.serialize()
+    elif request.kind == "battle":
+      battle, _ = create_battle(request.character_sender_id, receiver_id)
+      response = battle.serialize()
+  
+  request.accepted = accepted
+  db.session.commit()
+  return response, 202
+
+
+def get_request_id(of, request):
+  if request.kind == "friend":
+    if of == "sender":
+      return request.user_sender_id
+    elif of == "receiver":
+      return request.user_receiver_id
+  elif request.kind == "battle":
+    if of == "sender":
+      return request.character_sender_id
+    elif of == "receiver":
+      return request.character_receiver_id
+  
+  

@@ -82,6 +82,20 @@ def delete_user(uid):
         return failure_response("This user does not exist!")
     return success_response(user, 202)
 
+@app.route(SPECIFIC_USER_PATH, methods=["POST"])
+def end_friendship(uid):
+    body = json.loads(request.data)
+    if not is_valid(body, [("ex_friend_id", int)]):
+        return failure_response("Provide a proper request of the form {ex_friend_id: number}", 400)
+    user, code = dao.end_friendship(
+        uid=uid,
+        ex_friend_id=body.get("ex_friend_id")
+    )
+    if type(user) == str:
+        return failure_response(user, code)
+    return success_response(user, code)
+
+
 ######################
 #  CHARACTER ROUTES  #
 ######################
@@ -202,7 +216,7 @@ def create_log(bid):
     )
     if log is None:
         return failure_response("The provided battle does not exist!")
-    return success_response(log, 201)
+    return success_response(log.serialize(), 201)
 
 @app.route(SPECIFIC_LOG_PATH)
 def get_log(bid, lid):
@@ -218,9 +232,9 @@ def delete_log(bid, lid):
         return failure_response(log, code)
     return success_response(log, code)
 
-##################
-#  ROUTE ROUTES  #
-##################
+####################
+#  REQUEST ROUTES  #
+####################
 
 @app.route(REQUEST_PATH, methods=["POST"])
 def create_request():
@@ -252,6 +266,21 @@ def delete_request(rid):
     if req is None:
         return failure_response("This request does not exist!")
     return success_response(req, 202)
+
+@app.route(SPECIFIC_REQUEST_PATH, methods=["POST"])
+def respond_to_request(rid):
+    body = json.loads(request.data)
+    if not is_valid(body, [("receiver_id", int), ("accepted", bool)]):
+        return failure_response("Provide a proper request of the form "
+                                "{receiver_id: number, accepted: boolean}", 400)
+    data, code = dao.respond_to_request(
+        rid=rid,
+        receiver_id=body.get("receiver_id"),
+        accepted=body.get("accepted")
+    )
+    if type(data) == str:
+        return failure_response(data, code)
+    return success_response(data, code)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

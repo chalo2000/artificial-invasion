@@ -14,8 +14,7 @@ class User(db.Model):
   characters = db.relationship('Character', cascade="delete")
   friends = db.relationship('User', secondary=friends_table, 
                             primaryjoin=id==friends_table.c.friender_id,
-                            secondaryjoin=id==friends_table.c.friendee_id,
-                            back_populates="friends")
+                            secondaryjoin=id==friends_table.c.friendee_id)
 
   def __init__(self, **kwargs):
     self.username = kwargs.get("username", "")
