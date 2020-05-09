@@ -8,7 +8,7 @@ db_filename = "ai.db"
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///%s" % db_filename
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ECHO"] = True
+app.config["SQLALCHEMY_ECHO"] = False
 
 db.init_app(app)
 with app.app_context():
@@ -91,9 +91,9 @@ def end_friendship(uid):
         uid=uid,
         ex_friend_id=body.get("ex_friend_id")
     )
-    if type(user) == str:
+    if code != 202:
         return failure_response(user, code)
-    return success_response(user, code)
+    return success_response(user, 202)
 
 
 ######################
@@ -117,16 +117,16 @@ def create_character(uid):
 @app.route(SPECIFIC_CHARACTER_PATH)
 def get_character(uid, cid):
     character, code = dao.get_character(uid, cid)
-    if type(character) == str:
+    if code != 200:
         return failure_response(character, code)
-    return success_response(character, code)
+    return success_response(character)
 
 @app.route(SPECIFIC_CHARACTER_PATH, methods=["DELETE"])
 def delete_character(uid, cid):
     character, code = dao.delete_character(uid, cid)
-    if type(character) == str:
+    if code != 202:
         return failure_response(character, code)
-    return success_response(character, code)
+    return success_response(character, 202)
 
 ###################
 #  WEAPON ROUTES  #
@@ -178,9 +178,9 @@ def create_battle():
         challenger_id=body.get("challenger_id"),
         opponent_id=body.get("opponent_id")
     )
-    if type(battle) == str:
+    if code != 201:
         return failure_response(battle, code)
-    return success_response(battle, code)
+    return success_response(battle, 201)
 
 @app.route(SPECIFIC_BATTLE_PATH)
 def get_battle(bid):
@@ -195,6 +195,23 @@ def delete_battle(bid):
     if battle is None:
         return failure_response("This battle does not exist!")
     return success_response(battle, 202)
+
+@app.route(SPECIFIC_BATTLE_PATH, methods=["POST"])
+def send_battle_action(bid):
+    body = json.loads(request.data)
+    if not is_valid(body, [("actor_id", int), ("action", str)]):
+        return failure_response("Provide a proper request of the form "
+                                "{actor_id: number, action: string}", 400)
+    if not specific_check(body.get("action"), ["Attack", "Defend", "Counter"]):
+        return failure_response("Field action must be Attack, Defend, or Counter", 400)
+    response, code = dao.send_battle_action(
+        actor_id=body.get("actor_id"),
+        action=body.get("action"),
+        bid=bid
+    )
+    if code != 202:
+        return failure_response(response, code)
+    return success_response(response, 202)
 
 ################
 #  LOG ROUTES  #
@@ -221,16 +238,16 @@ def create_log(bid):
 @app.route(SPECIFIC_LOG_PATH)
 def get_log(bid, lid):
     log, code = dao.get_log(bid, lid)
-    if type(log) == str:
+    if code != 200:
         return failure_response(log, code)
-    return success_response(log, code)
+    return success_response(log)
 
 @app.route(SPECIFIC_LOG_PATH, methods=["DELETE"])
 def delete_log(bid, lid):
     log, code = dao.delete_log(bid, lid)
-    if type(log) == str:
+    if code != 202:
         return failure_response(log, code)
-    return success_response(log, code)
+    return success_response(log, 202)
 
 ####################
 #  REQUEST ROUTES  #
@@ -249,9 +266,9 @@ def create_request():
         sender_id=body.get("sender_id"),
         receiver_id=body.get("receiver_id")
     )
-    if type(req) == str:
+    if code != 201:
         return failure_response(req, code)
-    return success_response(req, code)
+    return success_response(req, 201)
 
 @app.route(SPECIFIC_REQUEST_PATH)
 def get_request(rid):
@@ -278,9 +295,9 @@ def respond_to_request(rid):
         receiver_id=body.get("receiver_id"),
         accepted=body.get("accepted")
     )
-    if type(data) == str and code is not 202:
+    if code != 202:
         return failure_response(data, code)
-    return success_response(data, code)
+    return success_response(data, 202)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

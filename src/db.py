@@ -85,12 +85,14 @@ class Battle(db.Model):
   challenger_id = db.Column(db.Integer, db.ForeignKey("character.id"), nullable=False)
   opponent_id = db.Column(db.Integer, db.ForeignKey("character.id"))
   logs = db.relationship('Log', cascade="delete")
+  action = db.relationship('Action', cascade="delete")
   done = db.Column(db.Boolean, nullable=False)
 
   def __init__(self, **kwargs):
     self.challenger_id = kwargs.get("challenger_id", 0)
     self.opponent_id = kwargs.get("opponent_id", None)
     self.logs = []
+    self.action = [] # one element list
     self.done = False
 
   def serialize(self):
@@ -161,4 +163,15 @@ class Request(db.Model):
       "receiver_id": self.__get_id(of="receiver"),
       "accepted": self.accepted
     }
+
+class Action(db.Model):
+  __tablename__ = "action"
+  id = db.Column(db.Integer, primary_key=True)
+  challenger_action = db.Column(db.String)
+  opponent_action = db.Column(db.String)
+  battle_id = db.Column(db.Integer, db.ForeignKey("battle.id"))
+
+  def __init__(self, **kwargs):
+    self.battle_id = kwargs.get("bid", 0) 
+
 

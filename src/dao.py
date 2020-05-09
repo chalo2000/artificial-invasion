@@ -1,5 +1,6 @@
-from db import db, User, Character, Weapon, Battle, Log, Request
+from db import db, User, Character, Weapon, Battle, Log, Request, Action
 import time
+from functools import reduce
 
 ###########
 #  USERS  #
@@ -157,7 +158,8 @@ def create_battle(challenger_id, opponent_id):
   db.session.add(new_battle)
   db.session.commit()
 
-  # Adding the starter log
+  add_battle_action(new_battle)
+  
   starting_log = create_starter_log(challenger, opponent, new_battle.id)
   return add_log(starting_log, new_battle.id), 201
 
@@ -168,6 +170,15 @@ def is_battling(cid):
                                       done=False).first()
   return (first_check is not None) or (second_check is not None)
 
+def add_battle_action(battle):
+  battle_action = Action(
+    battle_id=battle.id
+  )
+  battle.action.append(battle_action)
+
+  db.session.add(battle_action)
+  db.session.commit()
+  
 def add_log(log, bid):
   battle = Battle.query.filter_by(id=bid).first()
   battle.logs.insert(0, log)
@@ -190,6 +201,110 @@ def validate_battle_request(bid, delete):
     db.session.delete(battle)
     db.session.commit()
   return battle.serialize()
+
+def send_battle_action(actor_id, action, bid):
+  battle = Battle.query.filter_by(id=bid).first()
+  if battle is None:
+    return "The provided battle does not exist!", 404
+  
+  actor = Character.query.filter_by(id=actor_id).first()
+  if actor is None:
+    return "This character does not exist!", 404
+
+  actor_type = "challenger" if battle.challenger_id == actor_id else (
+               "opponent" if battle.opponent_id == actor_id else None)
+  if actor_type is None:
+    return "This character does not belong to the provided battle!", 403
+
+  if battle.done:
+    return "The provided battle is already done!", 403
+
+  if get_actor_response(battle, actor_type) is not None:
+    return "This character has already sent an action!", 403
+
+  # Update action
+  if actor_type == "challenger":
+    battle.action[0].challenger_action = action
+  elif actor_type == "opponent":
+    battle.action[0].opponent_action = action
+  
+  challenger_action = get_actor_response(battle, "challenger")
+  opponent_action = get_actor_response(battle, "opponent")
+
+  # An action has been fulfilled
+  if challenger_action is not None and opponent_action is not None:
+    # Calculate new battler health after damage
+    recent_log = reduce(lambda x, y: x if x.id > y.id else y, battle.logs)
+
+    challenger_atk = get_battler_stat(battle.challenger_id, "atk")
+    opponent_atk = get_battler_stat(battle.opponent_id, "atk")
+
+    challenger_info = (recent_log.challenger_hp, challenger_action, challenger_atk)
+    opponent_info = (recent_log.opponent_hp, opponent_action, opponent_atk)
+
+    (updated_c_hp, updated_o_hp), c_atk, o_atk = calculate_hp_and_atk(challenger_info, opponent_info)
+    
+    updated_challenger_info = (updated_c_hp, challenger_action, c_atk)
+    updated_opponent_info = (updated_o_hp, opponent_action, o_atk)
+
+    # Produce and insert appropriate log
+    new_log = generate_battle_log(updated_challenger_info, updated_opponent_info, battle)
+    add_log(new_log, battle.id)
+
+    win_log, winner_id = generate_win_log(updated_c_hp, updated_o_hp, battle)
+    if win_log:
+      add_log(win_log, battle.id)
+      if winner_id:
+        increment_winner_stats(winner_id)
+      battle.done = True
+
+    # Prepare Action for next round
+    battle.action[0].challenger_action = None
+    battle.action[0].opponent_action = None
+
+  db.session.commit()
+  return "Your action has been recorded", 202
+
+def get_actor_response(battle, actor_type):
+  return battle.action[0].challenger_action if actor_type == "challenger" else (
+         battle.action[0].opponent_action if actor_type == "opponent" else None)
+
+def get_battler_stat(battler_id, stat):
+  battler = Character.query.filter_by(id=battler_id).first()
+  return battler.serialize()[stat]
+
+def calculate_hp_and_atk(c_info, o_info):
+  c_hp, c_act, c_atk = c_info
+  o_hp, o_act, o_atk = o_info
+  if c_act == "Attack":
+    if o_act == "Attack":
+      return nonnegate(c_hp - o_atk, o_hp - c_atk), c_atk, o_atk
+    if o_act == "Defend":
+      return nonnegate(c_hp, o_hp - 0.5 * c_atk), 0.5 * c_atk, 0
+    if o_act == "Counter":
+      return nonnegate(c_hp - 2 * o_atk, o_hp), 0, 2 * o_atk
+  elif c_act == "Defend":
+    if o_act == "Attack":
+      return nonnegate(c_hp - 0.5 * o_atk, o_hp), 0, 0.5 * o_atk
+    if o_act == "Defend":
+      return c_hp, o_hp, 0, 0
+    if o_act == "Counter":
+      return nonnegate(c_hp, o_hp - c_atk), c_atk, 0
+  elif c_act == "Counter":
+    if o_act == "Attack":
+      return nonnegate(c_hp, o_hp - 2 * c_atk), 2 * c_atk, 0
+    if o_act == "Defend":
+      return nonnegate(c_hp - o_atk, o_hp), 0, o_atk
+    if o_act == "Counter":
+      return c_hp, o_hp, 0, 0
+
+def increment_winner_stats(cid):
+  winner = Character.query.filter_by(id=cid).first()
+  winner.mhp += 4
+  winner.atk += 2
+
+
+nonnegate = lambda c_hp, o_hp: (0 if c_hp < 0 else c_hp, 0 if o_hp < 0 else o_hp)
 
 ##########
 #  LOGS  #
@@ -223,6 +338,43 @@ def create_starter_log(challenger, opponent, bid):
     bid=bid
   )
 
+def generate_battle_log(c_info, o_info, battle):
+  c_hp, c_act, c_atk = c_info
+  o_hp, o_act, o_atk = o_info
+  c_name = get_battler_stat(battle.challenger_id, "name")
+  o_name = get_battler_stat(battle.opponent_id, "name")
+  action = (f"Challenger {c_name} used {c_act} and dealt {c_atk} damage! "
+           f"Opponent {o_name} used {o_act} and dealt {o_atk} damage!")
+  return create_log(
+    timestamp=time.time_ns(),
+    challenger_hp=c_hp,
+    opponent_hp=o_hp,
+    action=action,
+    bid=battle.id
+  )
+
+def generate_win_log(c_hp, o_hp, battle):
+  action = None
+  winner_id = None
+  if c_hp == 0 and o_hp == 0:
+    action = "The battle has ended by draw"
+  elif c_hp == 0:
+    winner_id = battle.opponent_id
+    winner_name = get_battler_stat(winner_id, "name")
+    action = f"{winner_name} has won the battle!!!"
+  elif o_hp == 0:
+    winner_id = battle.challenger_id
+    winner_name = get_battler_stat(winner_id, "name")
+    action = f"{winner_name} has won the battle!!!"
+
+  return create_log(
+    timestamp=time.time_ns(),
+    challenger_hp=c_hp,
+    opponent_hp=o_hp,
+    action=action,
+    bid=battle.id
+  ) if action else None, winner_id
+  
 def get_log(bid, lid):
   return validate_log_request(bid, lid, delete=False)
 
@@ -374,7 +526,6 @@ def respond_to_request(rid, receiver_id, accepted):
   request.accepted = accepted
   db.session.commit()
   return response, 202
-
 
 def get_request_id(of, request):
   if request.kind == "friend":
