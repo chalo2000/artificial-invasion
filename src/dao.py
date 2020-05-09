@@ -287,7 +287,7 @@ def calculate_hp_and_atk(c_info, o_info):
     if o_act == "Attack":
       return nonnegate(c_hp - 0.5 * o_atk, o_hp), 0, 0.5 * o_atk
     if o_act == "Defend":
-      return c_hp, o_hp, 0, 0
+      return (c_hp, o_hp), 0, 0
     if o_act == "Counter":
       return nonnegate(c_hp, o_hp - c_atk), c_atk, 0
   elif c_act == "Counter":
@@ -296,7 +296,7 @@ def calculate_hp_and_atk(c_info, o_info):
     if o_act == "Defend":
       return nonnegate(c_hp - o_atk, o_hp), 0, o_atk
     if o_act == "Counter":
-      return c_hp, o_hp, 0, 0
+      return (c_hp, o_hp), 0, 0
 
 def increment_winner_stats(cid):
   winner = Character.query.filter_by(id=cid).first()
