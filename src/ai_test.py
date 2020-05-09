@@ -44,6 +44,9 @@ CHARACTER_FORBIDDEN = "This character does not belong to the provided user!"
 CHARACTER_USER_NOT_FOUND = "The provided user does not exist!"
 CHARACTER_NOT_FOUND = "This character does not exist!"
 
+CHARACTER_PREPARE_CHARACTER_NOT_FOUND = "The provided character does not exist!"
+CHARACTER_PREPARE_UNEQUIP_FORBIDDEN = "You don’t have this weapon equipped!"
+
 WEAPON_BAD_REQUEST = 'Provide a proper request of the form {name: string, atk: number}'
 WEAPON_NOT_FOUND = "This weapon does not exist!"
 
@@ -147,7 +150,7 @@ def delete_user(user_id, code=202):
     res = requests.delete(gen_users_path(user_id))
     return unwrap_response(res, code)
 
-def end_friendship(user_id, data, code=202):
+def end_friendship(user_id, data, code=200):
     res = requests.post(gen_users_path(user_id), data=json.dumps(data))
     return unwrap_response(res, code)
 
@@ -257,7 +260,7 @@ def delete_request(request_id, code=202):
     res = requests.delete(gen_requests_path(request_id))
     return unwrap_response(res, code)
 
-def respond_to_request(request_id, data, code=202):
+def respond_to_request(request_id, data, code=200):
     res = requests.post(gen_requests_path(request_id), data=json.dumps(data))
     return unwrap_response(res, code, data)
 

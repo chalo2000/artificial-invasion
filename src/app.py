@@ -91,9 +91,9 @@ def end_friendship(uid):
         uid=uid,
         ex_friend_id=body.get("ex_friend_id")
     )
-    if code != 202:
+    if code != 200:
         return failure_response(user, code)
-    return success_response(user, 202)
+    return success_response(user)
 
 
 ######################
@@ -127,6 +127,21 @@ def delete_character(uid, cid):
     if code != 202:
         return failure_response(character, code)
     return success_response(character, 202)
+
+@app.route(SPECIFIC_CHARACTER_PATH, methods=["POST"])
+def prepare_weapon(uid, cid):
+    body = json.loads(request.data)
+    if not is_valid(body, [("weapon_id", int)]):
+        return failure_response("Provide a proper request of the form "
+                                "{weapon_id: number}", 400)
+    character, code = dao.prepare_weapon(
+        uid=uid,
+        cid=cid,
+        wid=body.get("weapon_id")
+    )
+    if code != 200:
+        return failure_response(character, code)
+    return success_response(character)
 
 ###################
 #  WEAPON ROUTES  #
@@ -295,9 +310,9 @@ def respond_to_request(rid):
         receiver_id=body.get("receiver_id"),
         accepted=body.get("accepted")
     )
-    if code != 202:
+    if code != 200:
         return failure_response(data, code)
-    return success_response(data, 202)
+    return success_response(data)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -58,8 +58,14 @@ class Character(db.Model):
       "name": self.name,
       "mhp": self.mhp,
       "atk": self.atk,
-      "equipped": self.weapon_id
+      "equipped": self.get_weapon()
     }
+  
+  def get_weapon(self):
+    weapon = Weapon.query.filter_by(id=self.weapon_id).first()
+    if weapon is None:
+      return None
+    return weapon.serialize()
 
 class Weapon(db.Model):
   __tablename__ = "weapon"

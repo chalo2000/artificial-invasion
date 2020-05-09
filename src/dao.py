@@ -52,7 +52,7 @@ def end_friendship(uid, ex_friend_id):
   ending_user.friends.remove(ex_friend_user)
   ex_friend_user.friends.remove(ending_user)
   db.session.commit()
-  return ex_friend_user.serialize(), 202
+  return ex_friend_user.serialize(), 200
 
 ################
 #  CHARACTERS  #
@@ -77,6 +77,21 @@ def get_character(uid, cid):
 def delete_character(uid, cid):
   return validate_character_request(uid, cid, delete=True)
 
+def prepare_weapon(uid, cid, wid):
+  serialized_character, code = validate_character_request(uid, cid, delete=False)
+  if code != 200:
+    return serialized_character, code # error message
+
+  weapon = get_weapon(wid)
+  if weapon is None:
+    return "This weapon does not exist!", 404
+
+  character, code = update_character_weapon(cid, wid)
+  if code != 200:
+    return character, code
+  
+  return character.serialize(), 200
+  
 def validate_character_request(uid, cid, delete):
   user = get_user(uid)
   if user is None:
@@ -95,6 +110,21 @@ def validate_character_request(uid, cid, delete):
     db.session.commit()
     return serialized_character, 202
   return serialized_character, 200
+
+def update_character_weapon(cid, wid):
+  character = Character.query.filter_by(id=cid).first()
+  if character.weapon_id == None:
+    character.weapon_id = wid
+  elif character.weapon_id == wid:
+    character.weapon_id = None
+  else:
+    return "You don’t have this weapon equipped!", 403
+  db.session.commit()
+  return character, 200
+
+def format_character(character, weapon):
+  character["equipped"] = weapon
+  return character
 
 #############
 #  WEAPONS  #
@@ -236,8 +266,10 @@ def send_battle_action(actor_id, action, bid):
     # Calculate new battler health after damage
     recent_log = reduce(lambda x, y: x if x.id > y.id else y, battle.logs)
 
-    challenger_atk = get_battler_stat(battle.challenger_id, "atk")
-    opponent_atk = get_battler_stat(battle.opponent_id, "atk")
+    challenger_atk = (get_battler_stat(battle.challenger_id, "atk") + 
+                      get_battler_weapon_stat(battle.challenger_id))
+    opponent_atk = (get_battler_stat(battle.opponent_id, "atk") + 
+                    get_battler_weapon_stat(battle.opponent_id))
 
     challenger_info = (recent_log.challenger_hp, challenger_action, challenger_atk)
     opponent_info = (recent_log.opponent_hp, opponent_action, opponent_atk)
@@ -273,6 +305,11 @@ def get_battler_stat(battler_id, stat):
   battler = Character.query.filter_by(id=battler_id).first()
   return battler.serialize()[stat]
 
+def get_battler_weapon_stat(battler_id):
+  battler = Character.query.filter_by(id=battler_id).first()
+  weapon = battler.serialize()["equipped"]
+  return 0 if weapon is None else weapon["atk"]
+
 def calculate_hp_and_atk(c_info, o_info):
   c_hp, c_act, c_atk = c_info
   o_hp, o_act, o_atk = o_info
@@ -302,7 +339,6 @@ def increment_winner_stats(cid):
   winner = Character.query.filter_by(id=cid).first()
   winner.mhp += 4
   winner.atk += 2
-
 
 nonnegate = lambda c_hp, o_hp: (0 if c_hp < 0 else c_hp, 0 if o_hp < 0 else o_hp)
 
@@ -525,7 +561,7 @@ def respond_to_request(rid, receiver_id, accepted):
   
   request.accepted = accepted
   db.session.commit()
-  return response, 202
+  return response, 200
 
 def get_request_id(of, request):
   if request.kind == "friend":
