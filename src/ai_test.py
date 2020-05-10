@@ -22,6 +22,7 @@ SAMPLE_USER_TWO = {"username": "2000chalo"}
 SAMPLE_END_FRIENDSHIP = lambda ex_id: {"ex_friend_id": ex_id}
 SAMPLE_CHARACTER_ONE = {"name": "Chalos"}
 SAMPLE_CHARACTER_TWO = {"name": "Solach"}
+SAMPLE_CHARACTER_PREPARE = lambda wid: {"weapon_id": wid}
 SAMPLE_WEAPON = {"name": "Rubber Duck", "atk": 1337}
 SAMPLE_BATTLE = lambda chal_id, o_id=None: {"challenger_id": chal_id, "opponent_id": o_id}
 SAMPLE_BATTLE_ACTION = lambda actor_id, action: {"actor_id": actor_id, "action": action}
@@ -44,7 +45,7 @@ CHARACTER_FORBIDDEN = "This character does not belong to the provided user!"
 CHARACTER_USER_NOT_FOUND = "The provided user does not exist!"
 CHARACTER_NOT_FOUND = "This character does not exist!"
 
-CHARACTER_PREPARE_CHARACTER_NOT_FOUND = "The provided character does not exist!"
+CHARACTER_PREPARE_BAD_REQUEST = "Provide a proper request of the form {weapon_id: number}"
 CHARACTER_PREPARE_UNEQUIP_FORBIDDEN = "You don’t have this weapon equipped!"
 
 WEAPON_BAD_REQUEST = 'Provide a proper request of the form {name: string, atk: number}'
@@ -168,6 +169,10 @@ def delete_character(user_id, character_id, code=202):
     res = requests.delete(gen_characters_path(user_id, character_id))
     return unwrap_response(res, code)
 
+def prepare_weapon(user_id, character_id, data, code=200):
+    res = requests.post(gen_characters_path(user_id, character_id), data=json.dumps(data))
+    return unwrap_response(res, code, data)
+
 def get_weapon(weapon_id=None, code=200):
     if weapon_id:
         res = requests.get(gen_weapons_path(weapon_id))
@@ -227,6 +232,19 @@ def execute_action(challenger_action, opponent_action):
     return (challenger["name"], challenger_action, challenger["atk"],
             opponent["name"], opponent_action, opponent["atk"],
             recent_log)
+
+def execute_action_to_completion(chal_act, o_act):
+    (chal_uid, chal_id), (o_uid, o_id), _, bid = respond_to_battle_request()
+    chal_act = SAMPLE_BATTLE_ACTION(chal_id, chal_act)
+    o_act = SAMPLE_BATTLE_ACTION(o_id, o_act)
+
+    while True:
+        try:
+            send_battle_action(bid, chal_act)
+            send_battle_action(bid, o_act)
+        except:
+            break
+    return (chal_uid, chal_id), (o_uid, o_id), bid
 
 def create_log(battle_id, data=SAMPLE_LOG, code=201):
     res = requests.post(gen_logs_path(battle_id), data=json.dumps(data))
@@ -532,6 +550,89 @@ class TestRoutes(unittest.TestCase):
         assert not body["success"]
         assert body["error"] == CHARACTER_NOT_FOUND
 
+    # Prepare a weapon
+
+    def test_prepare_weapon(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        weapon = create_weapon()["data"]
+
+        body = prepare_weapon(user_id, character_id, SAMPLE_CHARACTER_PREPARE(weapon["id"]))
+        character = body["data"]
+        assert body["success"]
+        assert character["equipped"] == weapon
+
+        body = prepare_weapon(user_id, character_id, SAMPLE_CHARACTER_PREPARE(weapon["id"]))
+        character = body["data"]
+        assert body["success"]
+        assert character["equipped"] == None
+
+    def test_prepare_weapon_bad_request(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        sample = SAMPLE_CHARACTER_PREPARE(weapon_id)
+        wrapper = lambda data, code: prepare_weapon(user_id, character_id, data=data, code=code)
+        bad_request_checker(sample, wrapper, CHARACTER_PREPARE_BAD_REQUEST)
+
+    def test_prepare_weapon_forbidden(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        another_user_id = create_user()["data"]["id"]
+        another_character_id = create_character(another_user_id)["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        sample_prepare = SAMPLE_CHARACTER_PREPARE(weapon_id)
+
+        body = prepare_weapon(user_id, another_character_id, sample_prepare, 403)
+        assert not body["success"]
+        assert body["error"] == CHARACTER_FORBIDDEN
+
+        body = prepare_weapon(another_user_id, character_id, sample_prepare, 403)
+        assert not body["success"]
+        assert body["error"] == CHARACTER_FORBIDDEN
+
+    def test_prepare_weapon_unequip_forbidden(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        sample_prepare = SAMPLE_CHARACTER_PREPARE(weapon_id)
+        prepare_weapon(user_id, character_id, sample_prepare)
+
+        another_weapon_id = create_weapon()["data"]["id"]
+        another_sample_prepare = SAMPLE_CHARACTER_PREPARE(another_weapon_id)
+
+        body = prepare_weapon(user_id, character_id, another_sample_prepare, 403)
+        assert not body["success"]
+        assert body["error"] == CHARACTER_PREPARE_UNEQUIP_FORBIDDEN
+
+    def test_prepare_weapon_user_not_found(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        sample_prepare = SAMPLE_CHARACTER_PREPARE(weapon_id)
+        
+        body = prepare_weapon(100000, character_id, sample_prepare, 404)
+        assert not body["success"]
+        assert body["error"] == CHARACTER_USER_NOT_FOUND
+
+    def test_prepare_weapon_character_not_found(self):
+        user_id = create_user()["data"]["id"]
+        weapon_id = create_weapon()["data"]["id"]
+        sample_prepare = SAMPLE_CHARACTER_PREPARE(weapon_id)
+        
+        body = prepare_weapon(user_id, 100000, sample_prepare, 404)
+        assert not body["success"]
+        assert body["error"] == CHARACTER_NOT_FOUND
+
+    def test_prepare_weapon_weapon_not_found(self):
+        user_id = create_user()["data"]["id"]
+        character_id = create_character(user_id)["data"]["id"]
+        sample_prepare = SAMPLE_CHARACTER_PREPARE(100000)
+        
+        body = prepare_weapon(user_id, character_id, sample_prepare, 404)
+        assert not body["success"]
+        assert body["error"] == WEAPON_NOT_FOUND
+
     #############
     #  WEAPONS  #
     #############
@@ -730,17 +831,7 @@ class TestRoutes(unittest.TestCase):
     ## Game logic tests START
 
     def test_challenger_wins(self):
-        (challenger_uid, challenger_id), (_, opponent_id), _, battle_id = respond_to_battle_request()
-        challenger_action = SAMPLE_BATTLE_ACTION(challenger_id, "Counter")
-        opponent_action = SAMPLE_BATTLE_ACTION(opponent_id, "Attack") # quickest way to end
-
-        while True:
-            try:
-                send_battle_action(battle_id, challenger_action)
-                send_battle_action(battle_id, opponent_action)
-            except:
-                break
-        
+        (challenger_uid, challenger_id), _, battle_id = execute_action_to_completion("Counter", "Attack")
         challenger = get_character(challenger_uid, challenger_id)["data"]
         done_battle = get_battle(battle_id)["data"]
         recent_log = most_recent_log(done_battle["logs"])
@@ -749,17 +840,7 @@ class TestRoutes(unittest.TestCase):
         assert challenger["atk"] == ATK + ATK_INCREMENT
 
     def test_opponent_wins(self):
-        (_, challenger_id), (opponent_uid, opponent_id), _, battle_id = respond_to_battle_request()
-        challenger_action = SAMPLE_BATTLE_ACTION(challenger_id, "Attack")
-        opponent_action = SAMPLE_BATTLE_ACTION(opponent_id, "Counter") # quickest way to end
-
-        while True:
-            try:
-                send_battle_action(battle_id, challenger_action)
-                send_battle_action(battle_id, opponent_action)
-            except:
-                break
-        
+        _, (opponent_uid, opponent_id), battle_id = execute_action_to_completion("Attack", "Counter")
         opponent = get_character(opponent_uid, opponent_id)["data"]
         done_battle = get_battle(battle_id)["data"]
         recent_log = most_recent_log(done_battle["logs"])
@@ -768,17 +849,7 @@ class TestRoutes(unittest.TestCase):
         assert opponent["atk"] == ATK + ATK_INCREMENT
 
     def test_battle_draw(self):
-        (_, challenger_id), (_, opponent_id), _, battle_id = respond_to_battle_request()
-        challenger_action = SAMPLE_BATTLE_ACTION(challenger_id, "Attack")
-        opponent_action = SAMPLE_BATTLE_ACTION(opponent_id, "Attack")
-
-        while True:
-            try:
-                send_battle_action(battle_id, challenger_action)
-                send_battle_action(battle_id, opponent_action)
-            except:
-                break
-        
+        _, _, battle_id = execute_action_to_completion("Attack", "Attack")
         done_battle = get_battle(battle_id)["data"]
         recent_log = most_recent_log(done_battle["logs"])
         assert recent_log["action"] == LOG_DRAW_ACTION
@@ -864,7 +935,17 @@ class TestRoutes(unittest.TestCase):
         assert body["error"] == BATTLE_ACTION_CHARACTER_FORBIDDEN
 
     def test_send_battle_action_done_forbidden(self):
-        pass #BATTLE_ACTION_DONE_FORBIDDEN
+        (_, challenger_id), (_, opponent_id), battle_id = execute_action_to_completion("Attack", "Counter")
+        
+        challenger_action = SAMPLE_BATTLE_ACTION(challenger_id, "Counter")
+        body = send_battle_action(battle_id, challenger_action, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_ACTION_DONE_FORBIDDEN
+
+        opponent_action = SAMPLE_BATTLE_ACTION(opponent_id, "Counter")
+        body = send_battle_action(battle_id, opponent_action, 403)
+        assert not body["success"]
+        assert body["error"] == BATTLE_ACTION_DONE_FORBIDDEN
     
     def test_send_battle_action_already_forbidden(self):
         (_, challenger_id), _, _, battle_id = respond_to_battle_request()
