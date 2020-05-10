@@ -1,6 +1,6 @@
 version: "3"
 services:
-  cms:
+  artificial-invasion:
     image: chalo2000/artificial-invasion
     ports:
       - "5000:5000"
