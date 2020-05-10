@@ -1,0 +1,8 @@
+version: "3"
+services:
+  cms:
+    image: chalo2000/artificial-invasion
+    ports:
+      - "5000:5000"
+    volumes:
+      - /home/chalo2000/ai.db:/usr/app/ai.db

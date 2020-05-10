@@ -1,0 +1,6 @@
+__pycache__
+venv
+.vscode
+ai.db
+secrets.env
+ai_test.py
