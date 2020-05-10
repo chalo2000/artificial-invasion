@@ -1,5 +1,6 @@
 from db import db, User, Character, Weapon, Battle, Log, Request, Action
 import time
+import random
 from functools import reduce
 
 ###########
@@ -252,6 +253,16 @@ def send_battle_action(actor_id, action, bid):
   if get_actor_response(battle, actor_type) is not None:
     return "This character has already sent an action!", 403
 
+  if battle.opponent_id == None:
+    update_battle_action(battle, actor_type, action, isAI = True)
+  else:
+    update_battle_action(battle, actor_type, action, isAI = False)
+  
+  db.session.commit()
+  return "Your action has been recorded", 202
+
+def update_battle_action(battle, actor_type, action, isAI):
+
   # Update action
   if actor_type == "challenger":
     battle.action[0].challenger_action = action
@@ -260,6 +271,8 @@ def send_battle_action(actor_id, action, bid):
   
   challenger_action = get_actor_response(battle, "challenger")
   opponent_action = get_actor_response(battle, "opponent")
+  if isAI:
+    opponent_action = ["Attack", "Defend", "Counter"][random.randint(0,2)]
 
   # An action has been fulfilled
   if challenger_action is not None and opponent_action is not None:
@@ -268,8 +281,10 @@ def send_battle_action(actor_id, action, bid):
 
     challenger_atk = (get_battler_stat(battle.challenger_id, "atk") + 
                       get_battler_weapon_stat(battle.challenger_id))
-    opponent_atk = (get_battler_stat(battle.opponent_id, "atk") + 
-                    get_battler_weapon_stat(battle.opponent_id))
+    opponent_atk = challenger_atk
+    if not isAI:
+      opponent_atk = (get_battler_stat(battle.opponent_id, "atk") + 
+                      get_battler_weapon_stat(battle.opponent_id))
 
     challenger_info = (recent_log.challenger_hp, challenger_action, challenger_atk)
     opponent_info = (recent_log.opponent_hp, opponent_action, opponent_atk)
@@ -293,9 +308,6 @@ def send_battle_action(actor_id, action, bid):
     # Prepare Action for next round
     battle.action[0].challenger_action = None
     battle.action[0].opponent_action = None
-
-  db.session.commit()
-  return "Your action has been recorded", 202
 
 def get_actor_response(battle, actor_type):
   return battle.action[0].challenger_action if actor_type == "challenger" else (
@@ -378,7 +390,9 @@ def generate_battle_log(c_info, o_info, battle):
   c_hp, c_act, c_atk = c_info
   o_hp, o_act, o_atk = o_info
   c_name = get_battler_stat(battle.challenger_id, "name")
-  o_name = get_battler_stat(battle.opponent_id, "name")
+  o_name = "AI"
+  if battle.opponent_id is not None:
+    o_name = get_battler_stat(battle.opponent_id, "name")
   action = (f"Challenger {c_name} used {c_act} and dealt {c_atk} damage! "
            f"Opponent {o_name} used {o_act} and dealt {o_atk} damage!")
   return create_log(
@@ -396,7 +410,9 @@ def generate_win_log(c_hp, o_hp, battle):
     action = "The battle has ended by draw"
   elif c_hp == 0:
     winner_id = battle.opponent_id
-    winner_name = get_battler_stat(winner_id, "name")
+    winner_name = "AI"
+    if winner_id is not None:
+      winner_name = get_battler_stat(winner_id, "name")
     action = f"{winner_name} has won the battle!!!"
   elif o_hp == 0:
     winner_id = battle.challenger_id
